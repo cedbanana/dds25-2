@@ -7,7 +7,7 @@ from proto import order_pb2, stock_pb2, payment_pb2
 class Order:
     id: str
     paid: bool
-    # In our internal model, items are stored as a list of (item_id, quantity) tuples.
+    # In our internal model, items are stored as a list of (id, quantity) tuples.
     items: List[Tuple[str, int]] = field(default_factory=list)
     user_id: str = ""
     total_cost: int = 0
@@ -16,11 +16,11 @@ class Order:
         # Convert our internal Order into the protobuf Order message.
         # The proto definition expects a repeated field of stock.Item.
         proto_items = []
-        for item_id, quantity in self.items:
+        for id, quantity in self.items:
             # Since our internal model does not store price for an order item,
             # we set it to 0. The Stock service can be used to retrieve price details.
             proto_item = stock_pb2.Item(
-                item_id=item_id,
+                id=item_id,
                 stock=quantity,  # using the "stock" field to represent quantity here
                 price=0,
             )
@@ -36,7 +36,7 @@ class Order:
     @classmethod
     def from_proto(cls, proto: order_pb2.Order) -> "Order":
         # Convert a protobuf Order message into our internal Order model.
-        items = [(item.item_id, item.stock) for item in proto.items]
+        items = [(item.id, item.stock) for item in proto.items]
         return cls(
             id=proto.id,
             paid=proto.paid,
@@ -48,16 +48,16 @@ class Order:
 
 @dataclass
 class Stock:
-    item_id: str
+    id: str
     stock: int
     price: int
 
     def to_proto(self) -> stock_pb2.Item:
-        return stock_pb2.Item(item_id=self.item_id, stock=self.stock, price=self.price)
+        return stock_pb2.Item(id=self.id, stock=self.stock, price=self.price)
 
     @classmethod
     def from_proto(cls, proto: stock_pb2.Item) -> "Stock":
-        return cls(item_id=proto.item_id, stock=proto.stock, price=proto.price)
+        return cls(id=proto.id, stock=proto.stock, price=proto.price)
 
 
 @dataclass

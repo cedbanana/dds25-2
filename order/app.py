@@ -9,10 +9,10 @@ import atexit
 import logging
 from flask import Flask
 from config import db, payment_channel, stock_channel
-from endpoints import order_blueprint
+from service import order_blueprint
 
 app = Flask("order-service")
-app.register_blueprint(order_blueprint, url_prefix="/api")
+app.register_blueprint(order_blueprint)
 
 
 @atexit.register

@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package order;
 
-import "proto/common.proto";
 import "proto/stock.proto";
 
 message Order {

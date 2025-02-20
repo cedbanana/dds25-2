@@ -24,7 +24,9 @@ def create_user():
     key = str(uuid.uuid4())
     user = User(id=key, credit=0)
     try:
+        print("YCCCC")
         db.save(user)
+        print("YDDDD")
         current_app.logger.info("Created new user: %s", key)
     except Exception as e:
         current_app.logger.exception("Failed to save new user: %s", key)

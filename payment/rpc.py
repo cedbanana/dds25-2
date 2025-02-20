@@ -29,6 +29,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     def ProcessPayment(self, request, context):
+        print("AAAAAAAAAAAAA")
         try:
             user_model = db.get(request.user_id, User)
             if user_model is None:

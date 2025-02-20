@@ -44,7 +44,7 @@ def add_item(order_id: str, item_id: str, quantity: int):
     except Exception as e:
         current_app.logger.exception("Error calling StockService for item %s", item_id)
         abort(400, "Error communicating with stock service")
-    if not item_response.item_id:
+    if not item_response.id:
         current_app.logger.error("Item not found: %s", item_id)
         abort(400, f"Item {item_id} not found")
 
