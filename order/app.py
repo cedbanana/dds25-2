@@ -1,7 +1,7 @@
 import atexit
 import logging
 from flask import Flask
-from .config import db
+from .config import db, payment_channel, stock_channel
 from .endpoints import order_blueprint
 
 app = Flask("order-service")
@@ -9,8 +9,10 @@ app.register_blueprint(order_blueprint, url_prefix="/api")
 
 
 @atexit.register
-def close_db_connection():
+def cleanup():
     db.close()
+    payment_channel.close()
+    stock_channel.close()
 
 
 if __name__ == "__main__":

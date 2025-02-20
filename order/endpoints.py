@@ -1,17 +1,16 @@
-import uuid
-import os
-import random
 from collections import defaultdict
+import uuid
 from flask import Blueprint, jsonify, abort, Response
 from msgspec import msgpack
-import requests
-from .config import db
+from config import db, payment_client, stock_client
 from .db.models import OrderValue
 from .db.client import DatabaseError
+from .proto.common_pb2 import Empty
+from .proto.payment_pb2 import PaymentRequest
+from .proto.stock_pb2 import ItemRequest, StockAdjustment
 
 order_blueprint = Blueprint("order", __name__)
 DB_ERROR_STR = "DB error"
-REQ_ERROR_STR = "Requests error"
 
 
 def get_order_from_db(order_id: str) -> OrderValue:
@@ -25,13 +24,6 @@ def get_order_from_db(order_id: str) -> OrderValue:
         abort(400, "Invalid order data format")
 
 
-def send_request(method: str, url: str):
-    try:
-        return requests.request(method, url)
-    except requests.exceptions.RequestException:
-        abort(400, REQ_ERROR_STR)
-
-
 @order_blueprint.post("/create/<user_id>")
 def create_order(user_id: str):
     order_id = str(uuid.uuid4())
@@ -43,59 +35,23 @@ def create_order(user_id: str):
     return jsonify({"order_id": order_id})
 
 
-@order_blueprint.post("/batch_init/<n>/<n_items>/<n_users>/<item_price>")
-def batch_init_orders(n: int, n_items: int, n_users: int, item_price: int):
-    def generate_order():
-        user_id = random.randint(0, n_users - 1)
-        items = [(str(random.randint(0, n_items - 1)), 1) for _ in range(2)]
-        return OrderValue(
-            paid=False, items=items, user_id=str(user_id), total_cost=2 * item_price
-        )
-
-    orders = {str(i): msgpack.encode(generate_order()) for i in range(int(n))}
-    try:
-        db.mset(orders)
-    except DatabaseError:
-        abort(400, DB_ERROR_STR)
-    return jsonify({"msg": "Batch init for orders successful"})
-
-
-@order_blueprint.get("/find/<order_id>")
-def find_order(order_id: str):
-    order = get_order_from_db(order_id)
-    return jsonify(
-        {
-            "order_id": order_id,
-            "paid": order.paid,
-            "items": order.items,
-            "user_id": order.user_id,
-            "total_cost": order.total_cost,
-        }
-    )
-
-
 @order_blueprint.post("/addItem/<order_id>/<item_id>/<quantity>")
 def add_item(order_id: str, item_id: str, quantity: int):
     order = get_order_from_db(order_id)
-    response = send_request("GET", f"{os.environ['GATEWAY_URL']}/stock/find/{item_id}")
 
-    if response.status_code != 200:
+    # Call StockService to get item price
+    item_response = stock_client.FindItem(ItemRequest(item_id=item_id))
+    if not item_response.item_id:
         abort(400, f"Item {item_id} not found")
 
-    price = response.json()["price"]
     order.items.append((item_id, int(quantity)))
-    order.total_cost += int(quantity) * price
+    order.total_cost += int(quantity) * item_response.price
 
     try:
         db.set(order_id, msgpack.encode(order))
     except DatabaseError:
         abort(400, DB_ERROR_STR)
     return Response(f"Item {item_id} added. Total: {order.total_cost}", status=200)
-
-
-def rollback_stock(items: list[tuple[str, int]]):
-    for item_id, qty in items:
-        send_request("POST", f"{os.environ['GATEWAY_URL']}/stock/add/{item_id}/{qty}")
 
 
 @order_blueprint.post("/checkout/<order_id>")
@@ -105,30 +61,25 @@ def checkout(order_id: str):
     for item_id, qty in order.items:
         items[item_id] += qty
 
-    subtracted = []
+    # Call StockService to subtract stock
     for item_id, total_qty in items.items():
-        response = send_request(
-            "POST", f"{os.environ['GATEWAY_URL']}/stock/subtract/{item_id}/{total_qty}"
+        stock_response = stock_client.RemoveStock(
+            StockAdjustment(item_id=item_id, quantity=total_qty)
         )
-        if response.status_code != 200:
-            rollback_stock(subtracted)
+        if not stock_response.success:
             abort(400, f"Insufficient stock for {item_id}")
-        subtracted.append((item_id, total_qty))
 
-    payment_response = send_request(
-        "POST",
-        f"{os.environ['GATEWAY_URL']}/payment/pay/{order.user_id}/{order.total_cost}",
+    # Call PaymentService to process payment
+    payment_response = payment_client.ProcessPayment(
+        PaymentRequest(user_id=order.user_id, amount=order.total_cost)
     )
-
-    if payment_response.status_code != 200:
-        rollback_stock(subtracted)
+    if not payment_response.success:
         abort(400, "Payment failed")
 
     order.paid = True
     try:
         db.set(order_id, msgpack.encode(order))
     except DatabaseError:
-        rollback_stock(subtracted)
         abort(400, DB_ERROR_STR)
 
     return Response("Checkout successful", status=200)

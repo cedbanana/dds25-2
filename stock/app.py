@@ -1,8 +1,10 @@
 import atexit
 import logging
 from flask import Flask
+import threading
 from .config import db
-from endpoints import stock_blueprint
+from .endpoints import stock_blueprint
+from .service import grpc_server
 
 app = Flask("stock-service")
 
@@ -10,14 +12,16 @@ app = Flask("stock-service")
 app.register_blueprint(stock_blueprint, url_prefix="/api")
 
 
-# Close the database connection on exit
-def close_db_connection():
+@atexit.register
+def cleanup():
     db.close()
 
 
-atexit.register(close_db_connection)
+atexit.register(db.close)
 
 if __name__ == "__main__":
+    grpc_thread = threading.Thread(target=grpc_server, daemon=True)
+    grpc_thread.start()
     app.run(host="0.0.0.0", port=8000, debug=True)
 else:
     gunicorn_logger = logging.getLogger("gunicorn.error")

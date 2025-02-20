@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package stock;
+
+import "proto/common.proto";
+
+service StockService {
+  rpc CreateItem(CreateItemRequest) returns (CreateItemResponse);
+  rpc FindItem(ItemRequest) returns (Item);
+  rpc AddStock(StockAdjustment) returns (common.Empty);
+  rpc RemoveStock(StockAdjustment) returns (common.Empty);
+  rpc BatchInitItems(BatchStockInitRequest) returns (common.Empty);
+}
+
+message Item {
+  string item_id = 1;
+  int32 stock = 2;
+  int32 price = 3;
+}
+
+message CreateItemRequest {
+  int32 price = 1;
+}
+
+message CreateItemResponse {
+  string item_id = 1;
+}
+
+message ItemRequest {
+  string item_id = 1;
+}
+
+message StockAdjustment {
+  string item_id = 1;
+  int32 quantity = 2;
+}
+
+message BatchStockInitRequest {
+  int32 num_items = 1;
+  int32 starting_stock = 2;
+  int32 item_price = 3;
+}

@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package payment;
+
+import "proto/common.proto";
+
+service PaymentService {
+  rpc CreateUser(common.Empty) returns (CreateUserResponse);
+  rpc AddFunds(AddFundsRequest) returns (common.Empty);
+  rpc ProcessPayment(PaymentRequest) returns (PaymentResponse);
+  rpc BatchInitUsers(BatchUserInitRequest) returns (common.Empty);
+}
+
+message User {
+  string user_id = 1;
+  int32 credit = 2;
+}
+
+message CreateUserResponse {
+  string user_id = 1;
+}
+
+message AddFundsRequest {
+  string user_id = 1;
+  int32 amount = 2;
+}
+
+message PaymentRequest {
+  string user_id = 1;
+  int32 amount = 2;
+}
+
+message PaymentResponse {
+  bool success = 1;
+}
+
+message BatchUserInitRequest {
+  int32 num_users = 1;
+  int32 starting_credit = 2;
+}
