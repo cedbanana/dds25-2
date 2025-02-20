@@ -1,126 +1,90 @@
 import uuid
-import grpc
-from msgspec import msgpack
+from flask import Blueprint, jsonify, Response, abort, current_app
+from config import db
+from models import User
 
-from .db.client import DatabaseError
-from .db.models import UserValue
-from .config import db
-
-from proto import payment_pb2
-from proto import payment_pb2_grpc
-from proto import common_pb2
-
-from concurrent import futures
-from proto import order_pb2_grpc
-from .service import PaymentService
+payment_blueprint = Blueprint("payment", __name__)
+DB_ERROR_STR = "DB error"
 
 
-class PaymentServicer(payment_pb2_grpc.PaymentServiceServicer):
-    def CreateUser(self, request, context):
-        """
-        Creates a new user with zero credit.
-        """
-        try:
-            user_id = str(uuid.uuid4())
-            value = msgpack.encode(UserValue(credit=0))
-            db.set(user_id, value)
-        except DatabaseError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("DB error during user creation")
-            return payment_pb2.CreateUserResponse()
-        return payment_pb2.CreateUserResponse(user_id=user_id)
-
-    def AddFunds(self, request, context):
-        """
-        Adds funds to an existing user's credit.
-        """
-        try:
-            entry = db.get(request.user_id)
-        except DatabaseError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("DB error")
-            return common_pb2.Empty()
-        if not entry:
-            context.set_code(grpc.StatusCode.NOT_FOUND)
-            context.set_details(f"User: {request.user_id} not found")
-            return common_pb2.Empty()
-        try:
-            user = msgpack.decode(entry, type=UserValue)
-        except msgpack.DecodeError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("Invalid user data format")
-            return common_pb2.Empty()
-
-        user.credit += request.amount
-
-        try:
-            db.set(request.user_id, msgpack.encode(user))
-        except DatabaseError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("DB error")
-            return common_pb2.Empty()
-
-        return common_pb2.Empty()
-
-    def ProcessPayment(self, request, context):
-        """
-        Processes a payment by subtracting the specified amount from the user's credit.
-        Fails if the user does not have enough funds.
-        """
-        try:
-            entry = db.get(request.user_id)
-        except DatabaseError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("DB error")
-            return payment_pb2.PaymentResponse(success=False)
-        if not entry:
-            context.set_code(grpc.StatusCode.NOT_FOUND)
-            context.set_details(f"User: {request.user_id} not found")
-            return payment_pb2.PaymentResponse(success=False)
-        try:
-            user = msgpack.decode(entry, type=UserValue)
-        except msgpack.DecodeError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("Invalid user data format")
-            return payment_pb2.PaymentResponse(success=False)
-
-        if user.credit < request.amount:
-            context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
-            context.set_details("Insufficient funds")
-            return payment_pb2.PaymentResponse(success=False)
-
-        user.credit -= request.amount
-
-        try:
-            db.set(request.user_id, msgpack.encode(user))
-        except DatabaseError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("DB error")
-            return payment_pb2.PaymentResponse(success=False)
-
-        return payment_pb2.PaymentResponse(success=True)
-
-    def BatchInitUsers(self, request, context):
-        """
-        Batch initializes users by creating `num_users` with a given starting credit.
-        """
-        kv_pairs = {
-            str(i): msgpack.encode(UserValue(credit=request.starting_credit))
-            for i in range(request.num_users)
-        }
-        try:
-            db.mset(kv_pairs)
-        except DatabaseError:
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details("DB error during batch initialization")
-            return common_pb2.Empty()
-        return common_pb2.Empty()
+def get_user_from_db(user_id: str) -> User:
+    try:
+        user = db.get(user_id, User)
+        if user is None:
+            current_app.logger.error("User not found: %s", user_id)
+            abort(400, f"User: {user_id} not found!")
+        return user
+    except Exception as e:
+        current_app.logger.exception("Failed to retrieve user: %s", user_id)
+        abort(400, DB_ERROR_STR)
 
 
-def grpc_server():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    order_pb2_grpc.add_OrderServiceServicer_to_server(PaymentService(), server)
-    server.add_insecure_port("[::]:50051")
-    print("Starting OrderService gRPC server on port 50051...")
-    server.start()
-    server.wait_for_termination()
+@payment_blueprint.post("/create_user")
+def create_user():
+    key = str(uuid.uuid4())
+    user = User(id=key, credit=0)
+    try:
+        db.save(user)
+        current_app.logger.info("Created new user: %s", key)
+    except Exception as e:
+        current_app.logger.exception("Failed to save new user: %s", key)
+        abort(400, DB_ERROR_STR)
+    return jsonify({"user_id": key})
+
+
+@payment_blueprint.post("/batch_init/<n>/<starting_money>")
+def batch_init_users(n: int, starting_money: int):
+    try:
+        n = int(n)
+        starting_money = int(starting_money)
+        for i in range(n):
+            user = User(id=str(i), credit=starting_money)
+            db.save(user)
+        current_app.logger.info("Batch init for users successful with %s users", n)
+    except Exception as e:
+        current_app.logger.exception("Batch initialization failed for users")
+        abort(400, DB_ERROR_STR)
+    return jsonify({"msg": "Batch init for users successful"})
+
+
+@payment_blueprint.get("/find_user/<user_id>")
+def find_user(user_id: str):
+    user_entry = get_user_from_db(user_id)
+    return jsonify({"user_id": user_entry.id, "credit": user_entry.credit})
+
+
+@payment_blueprint.post("/add_funds/<user_id>/<amount>")
+def add_credit(user_id: str, amount: int):
+    user_entry = get_user_from_db(user_id)
+    user_entry.credit += int(amount)
+    try:
+        db.save(user_entry)
+        current_app.logger.info(
+            "Added funds to user %s; new credit: %s", user_id, user_entry.credit
+        )
+    except Exception as e:
+        current_app.logger.exception("Failed to update funds for user: %s", user_id)
+        abort(400, DB_ERROR_STR)
+    return Response(
+        f"User: {user_id} credit updated to: {user_entry.credit}", status=200
+    )
+
+
+@payment_blueprint.post("/pay/<user_id>/<amount>")
+def remove_credit(user_id: str, amount: int):
+    user_entry = get_user_from_db(user_id)
+    user_entry.credit -= int(amount)
+    if user_entry.credit < 0:
+        current_app.logger.error("User %s credit cannot be reduced below zero", user_id)
+        abort(400, f"User: {user_id} credit cannot get reduced below zero!")
+    try:
+        db.save(user_entry)
+        current_app.logger.info(
+            "Processed payment for user %s; new credit: %s", user_id, user_entry.credit
+        )
+    except Exception as e:
+        current_app.logger.exception("Failed to update credit for user: %s", user_id)
+        abort(400, DB_ERROR_STR)
+    return Response(
+        f"User: {user_id} credit updated to: {user_entry.credit}", status=200
+    )

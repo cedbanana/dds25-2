@@ -1,0 +1,16 @@
+version: "3"
+
+services:
+  dev_redis:
+    image: redis:7.2-bookworm
+    command: redis-server --requirepass redis --maxmemory 512mb
+    networks:
+      default:
+        ipv4_address: 172.172.69.10
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.172.69.0/24

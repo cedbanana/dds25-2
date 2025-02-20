@@ -5,19 +5,14 @@ package payment;
 import "proto/common.proto";
 
 service PaymentService {
-  rpc CreateUser(common.Empty) returns (CreateUserResponse);
   rpc AddFunds(AddFundsRequest) returns (common.Empty);
   rpc ProcessPayment(PaymentRequest) returns (PaymentResponse);
-  rpc BatchInitUsers(BatchUserInitRequest) returns (common.Empty);
+  rpc FindUser(FindUserRequest) returns (FindUserResponse);
 }
 
 message User {
-  string user_id = 1;
+  string id = 1;
   int32 credit = 2;
-}
-
-message CreateUserResponse {
-  string user_id = 1;
 }
 
 message AddFundsRequest {
@@ -34,7 +29,10 @@ message PaymentResponse {
   bool success = 1;
 }
 
-message BatchUserInitRequest {
-  int32 num_users = 1;
-  int32 starting_credit = 2;
+message FindUserRequest {
+  string user_id = 1;
+}
+
+message FindUserResponse {
+  User user = 1;
 }

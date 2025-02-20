@@ -1,8 +1,10 @@
-from .db.client import RedisDatabaseClient
 import os
+from dotenv import load_dotenv
+from database import RedisClient
 
-# Initialize database client
-db = RedisDatabaseClient(
+load_dotenv()
+
+db = RedisClient(
     host=os.environ["REDIS_HOST"],
     port=int(os.environ["REDIS_PORT"]),
     password=os.environ["REDIS_PASSWORD"],

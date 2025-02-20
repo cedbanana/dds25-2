@@ -1,10 +1,15 @@
 import os
-import grpc
-from .db.client import RedisDatabaseClient
-from .proto.payment_pb2_grpc import PaymentServiceStub
-from .proto.stock_pb2_grpc import StockServiceStub
+from dotenv import load_dotenv
 
-db = RedisDatabaseClient(
+import grpc
+from proto.payment_pb2_grpc import PaymentServiceStub
+from proto.stock_pb2_grpc import StockServiceStub
+
+from database import RedisClient
+
+load_dotenv()
+
+db = RedisClient(
     host=os.environ["REDIS_HOST"],
     port=int(os.environ["REDIS_PORT"]),
     password=os.environ["REDIS_PASSWORD"],

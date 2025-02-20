@@ -1,8 +1,15 @@
+import sys
+import os
+
+# Add common to path if it is not already there
+if not os.path.isdir("common"):
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
+
 import atexit
 import logging
 from flask import Flask
-from .config import db, payment_channel, stock_channel
-from .endpoints import order_blueprint
+from config import db, payment_channel, stock_channel
+from endpoints import order_blueprint
 
 app = Flask("order-service")
 app.register_blueprint(order_blueprint, url_prefix="/api")

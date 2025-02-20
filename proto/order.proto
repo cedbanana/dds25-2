@@ -5,43 +5,10 @@ package order;
 import "proto/common.proto";
 import "proto/stock.proto";
 
-service OrderService {
-  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
-  rpc FindOrder(OrderRequest) returns (Order);
-  rpc AddItem(AddItemRequest) returns (Order);
-  rpc Checkout(OrderRequest) returns (common.Empty);
-  rpc BatchInitOrders(BatchOrderInitRequest) returns (common.Empty);
-}
-
 message Order {
-  string order_id = 1;
+  string id = 1;
   bool paid = 2;
   repeated stock.Item items = 3;
   string user_id = 4;
   int32 total_cost = 5;
-}
-
-message CreateOrderRequest {
-  string user_id = 1;
-}
-
-message CreateOrderResponse {
-  string order_id = 1;
-}
-
-message OrderRequest {
-  string order_id = 1;
-}
-
-message AddItemRequest {
-  string order_id = 1;
-  string item_id = 2;
-  int32 quantity = 3;
-}
-
-message BatchOrderInitRequest {
-  int32 num_orders = 1;
-  int32 num_items = 2;
-  int32 num_users = 3;
-  int32 item_price = 4;
 }

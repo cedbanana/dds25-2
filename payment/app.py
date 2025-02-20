@@ -1,24 +1,28 @@
 import os
+import sys
+
+# Add common to path if it is not already there
+if not os.path.isdir("common"):
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
+
 import atexit
 import logging
 import threading
 from flask import Flask
-from .endpoints import user_blueprint
-from .config import db
-from .service import grpc_server
+from service import payment_blueprint
+from config import db
+from rpc import grpc_server
 
 app = Flask("payment-service")
 
 # Register the Blueprint
-app.register_blueprint(user_blueprint, url_prefix="/api")
+app.register_blueprint(payment_blueprint)
 
 
-@atexit.register
+# @atexit.register
 def cleanup():
     db.close()
 
-
-atexit.register(db.close)
 
 if __name__ == "__main__":
     grpc_thread = threading.Thread(target=grpc_server, daemon=True)

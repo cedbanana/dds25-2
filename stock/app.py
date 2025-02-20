@@ -1,10 +1,17 @@
+import sys
+import os
+
+# Add common to path if it is not already there
+if not os.path.isdir("common"):
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
+
 import atexit
 import logging
 from flask import Flask
 import threading
-from .config import db
-from .endpoints import stock_blueprint
-from .service import grpc_server
+from config import db
+from service import stock_blueprint
+from rpc import grpc_server
 
 app = Flask("stock-service")
 
@@ -16,8 +23,6 @@ app.register_blueprint(stock_blueprint, url_prefix="/api")
 def cleanup():
     db.close()
 
-
-atexit.register(db.close)
 
 if __name__ == "__main__":
     grpc_thread = threading.Thread(target=grpc_server, daemon=True)
