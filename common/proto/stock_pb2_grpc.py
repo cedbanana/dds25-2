@@ -50,6 +50,16 @@ class StockServiceStub(object):
                 request_serializer=proto_dot_stock__pb2.StockAdjustment.SerializeToString,
                 response_deserializer=proto_dot_common__pb2.OperationResponse.FromString,
                 _registered_method=True)
+        self.BulkOrder = channel.unary_unary(
+                '/stock.StockService/BulkOrder',
+                request_serializer=proto_dot_stock__pb2.BulkStockAdjustment.SerializeToString,
+                response_deserializer=proto_dot_stock__pb2.BulkStockAdjustmentResponse.FromString,
+                _registered_method=True)
+        self.BulkRefund = channel.unary_unary(
+                '/stock.StockService/BulkRefund',
+                request_serializer=proto_dot_stock__pb2.BulkStockAdjustment.SerializeToString,
+                response_deserializer=proto_dot_stock__pb2.BulkStockAdjustmentResponse.FromString,
+                _registered_method=True)
 
 
 class StockServiceServicer(object):
@@ -74,6 +84,18 @@ class StockServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def BulkOrder(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BulkRefund(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_StockServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -91,6 +113,16 @@ def add_StockServiceServicer_to_server(servicer, server):
                     servicer.RemoveStock,
                     request_deserializer=proto_dot_stock__pb2.StockAdjustment.FromString,
                     response_serializer=proto_dot_common__pb2.OperationResponse.SerializeToString,
+            ),
+            'BulkOrder': grpc.unary_unary_rpc_method_handler(
+                    servicer.BulkOrder,
+                    request_deserializer=proto_dot_stock__pb2.BulkStockAdjustment.FromString,
+                    response_serializer=proto_dot_stock__pb2.BulkStockAdjustmentResponse.SerializeToString,
+            ),
+            'BulkRefund': grpc.unary_unary_rpc_method_handler(
+                    servicer.BulkRefund,
+                    request_deserializer=proto_dot_stock__pb2.BulkStockAdjustment.FromString,
+                    response_serializer=proto_dot_stock__pb2.BulkStockAdjustmentResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -174,6 +206,60 @@ class StockService(object):
             '/stock.StockService/RemoveStock',
             proto_dot_stock__pb2.StockAdjustment.SerializeToString,
             proto_dot_common__pb2.OperationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BulkOrder(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/stock.StockService/BulkOrder',
+            proto_dot_stock__pb2.BulkStockAdjustment.SerializeToString,
+            proto_dot_stock__pb2.BulkStockAdjustmentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BulkRefund(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/stock.StockService/BulkRefund',
+            proto_dot_stock__pb2.BulkStockAdjustment.SerializeToString,
+            proto_dot_stock__pb2.BulkStockAdjustmentResponse.FromString,
             options,
             channel_credentials,
             insecure,

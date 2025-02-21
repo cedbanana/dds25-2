@@ -27,7 +27,7 @@ services:
     env_file:
       - env/order_redis.env
     environment: &dbenv
-      DB_TYPE: ignite
+      DB_TYPE: redis
     depends_on:
       - ignite
       - redis
