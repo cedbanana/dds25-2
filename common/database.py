@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import random
 import redis
 import json
+import copy
 from pyignite import Client
 from pyignite.datatypes.cache_config import CacheAtomicityMode
 from pyignite.datatypes import TransactionConcurrency, TransactionIsolation
@@ -99,55 +100,16 @@ class DatabaseClient(ABC, Generic[T]):
         pass
 
     @contextmanager
+    @abstractmethod
     def transaction(
         self,
         config: TransactionConfig = TransactionConfig(),
     ):
-        """
-        Context manager for atomic transactions with configurable isolation and concurrency.
-
-        Args:
-            config: Transaction configuration
-        """
-        transactional_client = self._create_transactional_client(**config.init)
-        try:
-            transactional_client._begin_transaction(**config.begin)
-            yield transactional_client
-            transactional_client._commit_transaction(**config.commit)
-        except Exception as e:
-            transactional_client._rollback_transaction(**config.rollback)
-            raise TransactionError(f"Transaction failed: {str(e)}")
-        finally:
-            transactional_client._end_transaction(**config.end)
+        pass
 
     @abstractmethod
     def close(self):
         """Close the database client connection"""
-        pass
-
-    @abstractmethod
-    def _create_transactional_client(self) -> "DatabaseClient[T]":
-        """Create a new instance of the database client in a transactional state."""
-        pass
-
-    @abstractmethod
-    def _begin_transaction(
-        self,
-        isolation: Optional[TransactionIsolation],
-        concurrency: Optional[TransactionConcurrency],
-    ) -> None:
-        pass
-
-    @abstractmethod
-    def _commit_transaction(self) -> None:
-        pass
-
-    @abstractmethod
-    def _rollback_transaction(self) -> None:
-        pass
-
-    @abstractmethod
-    def _end_transaction(self, **kwargs) -> None:
         pass
 
 
@@ -334,32 +296,24 @@ class RedisClient(DatabaseClient[T]):
         """Close the Redis client connection"""
         self.redis.close()
 
-    def _create_transactional_client(self, **kwargs) -> "RedisClient[T]":
-        """Create a new RedisClient instance in a transactional state."""
-        client = RedisClient(pipeline=self._get_client().pipeline())
-        return client
+    @contextmanager
+    def transaction(self, config: TransactionConfig = TransactionConfig()):
+        pipeline = self._get_client().pipeline()
+        try:
+            for id, attr in config.begin.get("watch", []):
+                pipeline.watch(self._get_key(id, attr))
 
-    def _begin_transaction(self, watch=[], **kwargs) -> None:
-        for id, attr in watch:
-            self.pipeline.watch(self._get_key(id, attr))
+            client = copy.copy(self)
+            client.pipeline = pipeline
 
-    def _commit_transaction(self, **kwargs) -> None:
-        if self.pipeline:
-            self.pipeline.execute()
-            self.pipeline.unwatch()
-            self.pipeline = None
+            yield client
+            pipeline.execute()
+            pipeline.unwatch()
 
-    def _rollback_transaction(self, **kwargs) -> None:
-        if self.pipeline:
-            self.pipeline.unwatch()
-            self.pipeline.reset()
-            self.pipeline = None
-
-    def _end_transaction(self, **kwargs) -> None:
-        pass
-
-
-# [Previous Redis implementation remains the same, but updated to handle transaction config]
+        except Exception as e:
+            pipeline.unwatch()
+            pipeline.reset()
+            raise TransactionError(e)
 
 
 class IgniteClient(DatabaseClient[T]):
@@ -368,24 +322,27 @@ class IgniteClient(DatabaseClient[T]):
         hosts: list[tuple[str, int]] = [("127.0.0.1", 10800)],
         model_class: Type[T] = None,
         additional_conf: dict = {},
-        tx=None,
     ):
-        self.tx = tx
-        if tx is None:
-            self.client = Client()
-            self.client.connect(hosts)
+        self.config = {
+            "hosts": hosts,
+            "model_class": model_class,
+            "additional_conf": additional_conf,
+        }
+        self.client = Client()
+        self.client.connect(hosts)
+        self.tx = None
 
-            cache_conf = {
-                PROP_NAME: model_class.__name__
-                if model_class
-                else "model_cache_" + str(random.randint(1, 10000)),
-                PROP_CACHE_ATOMICITY_MODE: CacheAtomicityMode.TRANSACTIONAL,
-            }
+        cache_conf = {
+            PROP_NAME: model_class.__name__
+            if model_class
+            else "model_cache_" + str(random.randint(1, 10000)),
+            PROP_CACHE_ATOMICITY_MODE: CacheAtomicityMode.TRANSACTIONAL,
+        }
 
-            cache_conf.update(additional_conf)
+        cache_conf.update(additional_conf)
 
-            # Create cache for storing model attributes
-            self.cache = self.client.get_or_create_cache(cache_conf)
+        # Create cache for storing model attributes
+        self.cache = self.client.get_or_create_cache(cache_conf)
 
     def _value_hint(self, model_class: Type[T], field: str) -> str:
         field_type = model_class.__annotations__.get(field)
@@ -483,9 +440,6 @@ class IgniteClient(DatabaseClient[T]):
         if isinstance(value, list) and len(value) == 0:
             self.cache.remove(key)
         else:
-            logging.error(
-                f"Setting attribute {attribute} to {value}, hint: {self._value_hint(model_class, attribute)}"
-            )
             self.cache.put(
                 key, value, value_hint=self._value_hint(model_class, attribute)
             )
@@ -548,40 +502,28 @@ class IgniteClient(DatabaseClient[T]):
         self,
         config: TransactionConfig = TransactionConfig(),
     ):
-        """
-        Context manager for atomic transactions with configurable isolation and concurrency.
+        txclient = IgniteClient(**self.config)
 
-        Args:
-            config: Transaction configuration
-        """
-        with self.client.tx_start(**config.init) as tx:
-            logging.error(tx.tx_id)
-            try:
-                yield self
+        try:
+            with txclient.client.tx_start(
+                isolation=config.init.get(
+                    "isolation", TransactionIsolation.SERIALIZABLE
+                ),
+                concurrency=config.init.get(
+                    "concurrency", TransactionConcurrency.PESSIMISTIC
+                ),
+            ) as tx:
+                txclient.tx = tx
+                yield txclient
                 tx.commit()
-            except Exception as e:
-                tx.rollback()
-                raise TransactionError(f"Transaction failed: {str(e)}")
+        except Exception as e:
+            raise TransactionError(e)
+        finally:
+            txclient.close()
 
     def close(self):
         """Close the Ignite client connection"""
         self.client.close()
 
     def _create_transactional_client(self) -> "DatabaseClient[T]":
-        pass
-
-    def _begin_transaction(
-        self,
-        isolation: Optional[TransactionIsolation],
-        concurrency: Optional[TransactionConcurrency],
-    ) -> None:
-        pass
-
-    def _commit_transaction(self) -> None:
-        pass
-
-    def _rollback_transaction(self) -> None:
-        pass
-
-    def _end_transaction(self, **kwargs) -> None:
         pass
