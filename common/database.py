@@ -142,7 +142,7 @@ class RedisClient(DatabaseClient[T]):
     def _prepare_for_changes(self) -> None:
         if self.pipeline is None:
             return
-        else:
+        elif not self.pipeline.explicit_transaction:
             self.pipeline.multi()
 
     def get(self, id: str, model_class: Type[T]) -> Optional[T]:

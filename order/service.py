@@ -1,10 +1,12 @@
+import logging
+from random import random
 import uuid
 from collections import defaultdict
 from flask import Blueprint, jsonify, abort, Response, current_app
 from config import db, payment_client, stock_client
-from models import Order
+from models import Order, Stock
 from proto.payment_pb2 import PaymentRequest
-from proto.stock_pb2 import ItemRequest, StockAdjustment
+from proto.stock_pb2 import ItemRequest, StockAdjustment, BulkStockAdjustment
 
 order_blueprint = Blueprint("order", __name__)
 DB_ERROR_STR = "DB error"
@@ -63,6 +65,58 @@ def add_item(order_id: str, item_id: str, quantity: int):
     return Response(f"Item {item_id} added. Total: {order.total_cost}", status=200)
 
 
+@order_blueprint.post("/batch_init/<n>/<n_items>/<n_users>/<item_price>")
+def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str):
+    """
+    Initialize a batch of random orders for testing purposes.
+
+    Args:
+        n: Number of orders to create
+        n_items: Range of possible item IDs (0 to n_items-1)
+        n_users: Range of possible user IDs (0 to n_users-1)
+        item_price: Price per item
+    """
+    try:
+        n = int(n)
+        n_items = int(n_items)
+        n_users = int(n_users)
+        item_price = int(item_price)
+    except ValueError:
+        current_app.logger.error("Invalid numeric parameters provided")
+        abort(400, "All parameters must be valid integers")
+
+    def generate_order() -> Order:
+        order_id = str(uuid.uuid4())
+        user_id = str(random.randint(0, n_users - 1))
+
+        # Generate two random items with quantity 1
+        item1_id = str(random.randint(0, n_items - 1))
+        item2_id = str(random.randint(0, n_items - 1))
+
+        # Format items as they are in the existing code: "item_id:quantity"
+        items = [f"{item1_id}:1", f"{item2_id}:1"]
+
+        return Order(
+            id=order_id,
+            paid=False,
+            items=items,
+            user_id=user_id,
+            total_cost=2 * item_price,  # Two items at item_price each
+        )
+
+    # Generate and save all orders
+    for _ in range(n):
+        order = generate_order()
+        try:
+            db.save(order)
+        except Exception as e:
+            current_app.logger.exception("Failed to save batch orders")
+            abort(400, DB_ERROR_STR)
+
+    current_app.logger.info(f"Successfully initialized {n} random orders")
+    return jsonify({"msg": "Batch init for orders successful"})
+
+
 ### TODO: BIIIIIIIIIIG TODO Here to actually implement proper distributed
 ### ACID transactions. This is the only place we need them.
 ###
@@ -80,20 +134,93 @@ def add_item(order_id: str, item_id: str, quantity: int):
 ### 7. Idk we will come up with something if we get bored
 
 
-def revert_items(items):
-    for item_id, qty in items.items():
+## Uses bulk stock adjustments
+# @order_blueprint.post("/checkout/<order_id>")
+def checkout_bulk(order_id: str):
+    def revert_items(items):
         try:
-            stock_client.AddStock(StockAdjustment(item_id=item_id, quantity=qty))
+            stock_client.BulkRefund(BulkStockAdjustment(items=items))
         except Exception as e:
             current_app.logger.exception(
-                "Error calling AddStock for item %s during order revert", item_id
+                "Error calling AddStock for items during order revert",
             )
             abort(400, "Error communicating with stock service")
-        current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
+
+    order = get_order_from_db(order_id)
+    items = defaultdict(int)
+
+    for item in order.items:
+        item_id, qty = item.split(":")
+        if item_id not in items:
+            items[item_id] = Stock(id=item_id, stock=0, price=0)
+
+        items[item_id].stock += int(qty)
+
+    deducted_items = [x.to_proto() for x in items.values()]
+
+    try:
+        stock_response = stock_client.BulkOrder(
+            BulkStockAdjustment(items=deducted_items)
+        )
+    except Exception as e:
+        current_app.logger.exception("Error calling RemoveStock for item %s", item_id)
+        abort(400, "Error communicating with stock service")
+
+    if not stock_response.response.success:
+        err_msg = stock_response.response.error or f"Insufficient stock for {item_id}"
+        current_app.logger.error(
+            "Stock deduction failed for item %s: %s", item_id, err_msg
+        )
+        abort(400, err_msg)
+    else:
+        order.total_cost = stock_response.total_cost
+
+    logging.error("Checking out order with total cost: %s", order)
+
+    # Process payment.
+    try:
+        payment_response = payment_client.ProcessPayment(
+            PaymentRequest(user_id=order.user_id, amount=order.total_cost)
+        )
+    except Exception as e:
+        current_app.logger.exception(
+            "Error calling ProcessPayment for user %s", order.user_id
+        )
+        revert_items(deducted_items)
+        abort(400, "Error communicating with payment service")
+    if not payment_response.success:
+        err_msg = payment_response.error or "Payment failed"
+        current_app.logger.error("Payment failed for order %s: %s", order_id, err_msg)
+        revert_items(deducted_items)
+        abort(400, err_msg)
+
+    order.paid = True
+    try:
+        db.save(order)
+        current_app.logger.info("Checkout successful for order %s", order_id)
+    except Exception as e:
+        current_app.logger.exception(
+            "Failed to update order after checkout: %s", order_id
+        )
+        abort(400, DB_ERROR_STR)
+
+    return Response("Checkout successful", status=200)
 
 
+## Does individual stock adjustments
 @order_blueprint.post("/checkout/<order_id>")
-def checkout(order_id: str):
+def checkout_individual(order_id: str):
+    def revert_items(items):
+        for item_id, qty in items.items():
+            try:
+                stock_client.AddStock(StockAdjustment(item_id=item_id, quantity=qty))
+            except Exception as e:
+                current_app.logger.exception(
+                    "Error calling AddStock for item %s during order revert", item_id
+                )
+                abort(400, "Error communicating with stock service")
+            current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
+
     order = get_order_from_db(order_id)
     items = defaultdict(int)
 
