@@ -1,4 +1,5 @@
 import logging
+from random import random
 import uuid
 from collections import defaultdict
 from flask import Blueprint, jsonify, abort, Response, current_app
@@ -62,6 +63,58 @@ def add_item(order_id: str, item_id: str, quantity: int):
         current_app.logger.exception("Failed to update order: %s", order_id)
         abort(400, DB_ERROR_STR)
     return Response(f"Item {item_id} added. Total: {order.total_cost}", status=200)
+
+
+@order_blueprint.post("/batch_init/<n>/<n_items>/<n_users>/<item_price>")
+def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str):
+    """
+    Initialize a batch of random orders for testing purposes.
+
+    Args:
+        n: Number of orders to create
+        n_items: Range of possible item IDs (0 to n_items-1)
+        n_users: Range of possible user IDs (0 to n_users-1)
+        item_price: Price per item
+    """
+    try:
+        n = int(n)
+        n_items = int(n_items)
+        n_users = int(n_users)
+        item_price = int(item_price)
+    except ValueError:
+        current_app.logger.error("Invalid numeric parameters provided")
+        abort(400, "All parameters must be valid integers")
+
+    def generate_order() -> Order:
+        order_id = str(uuid.uuid4())
+        user_id = str(random.randint(0, n_users - 1))
+
+        # Generate two random items with quantity 1
+        item1_id = str(random.randint(0, n_items - 1))
+        item2_id = str(random.randint(0, n_items - 1))
+
+        # Format items as they are in the existing code: "item_id:quantity"
+        items = [f"{item1_id}:1", f"{item2_id}:1"]
+
+        return Order(
+            id=order_id,
+            paid=False,
+            items=items,
+            user_id=user_id,
+            total_cost=2 * item_price,  # Two items at item_price each
+        )
+
+    # Generate and save all orders
+    for _ in range(n):
+        order = generate_order()
+        try:
+            db.save(order)
+        except Exception as e:
+            current_app.logger.exception("Failed to save batch orders")
+            abort(400, DB_ERROR_STR)
+
+    current_app.logger.info(f"Successfully initialized {n} random orders")
+    return jsonify({"msg": "Batch init for orders successful"})
 
 
 ### TODO: BIIIIIIIIIIG TODO Here to actually implement proper distributed
