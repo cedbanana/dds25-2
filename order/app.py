@@ -11,6 +11,9 @@ from flask import Flask
 from config import db, payment_channel, stock_channel
 from service import order_blueprint
 
+from prometheus_flask_exporter import PrometheusMetrics  # New import
+
+
 app = Flask("order-service")
 app.register_blueprint(order_blueprint)
 
@@ -21,6 +24,8 @@ def cleanup():
     payment_channel.close()
     stock_channel.close()
 
+
+metrics = PrometheusMetrics(app)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
