@@ -6,8 +6,9 @@ import "proto/common.proto";
 
 service StockService {
   rpc FindItem(ItemRequest) returns (Item);
-  rpc AddStock(StockAdjustment) returns (common.Empty);
-  rpc RemoveStock(StockAdjustment) returns (common.Empty);
+  // Return OperationResponse to include a possible error message.
+  rpc AddStock(StockAdjustment) returns (common.OperationResponse);
+  rpc RemoveStock(StockAdjustment) returns (common.OperationResponse);
 }
 
 message Item {

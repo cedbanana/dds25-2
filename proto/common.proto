@@ -7,3 +7,9 @@ message Empty {}
 message Error {
   string message = 1;
 }
+
+// New: a generic response wrapper for operations
+message OperationResponse {
+  bool success = 1;
+  string error = 2;  // if non-empty, indicates a business error
+}

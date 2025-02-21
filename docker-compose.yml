@@ -59,3 +59,17 @@ services:
   payment-db:
     image: redis:7.2-bookworm
     command: redis-server --requirepass redis --maxmemory 512mb
+
+  dev_redis:
+    image: redis:7.2-bookworm
+    command: redis-server --requirepass redis --maxmemory 512mb
+    networks:
+      devnet_dds:
+        ipv4_address: 172.172.69.10
+
+networks:
+  devnet_dds:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.172.69.0/24

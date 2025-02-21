@@ -1,5 +1,6 @@
 import logging
 from concurrent import futures
+from database import TransactionConfig
 import grpc
 
 from config import db
@@ -12,43 +13,50 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
         try:
             user_model = db.get(request.user_id, User)
             if user_model is None:
-                context.abort(
-                    grpc.StatusCode.NOT_FOUND, f"User: {request.user_id} not found!"
+                # Instead of aborting, return an error response.
+                return common_pb2.OperationResponse(
+                    success=False, error=f"User: {request.user_id} not found!"
                 )
-            user_model.credit += request.amount
-            db.save(user_model)
+
+            user_model.credit = db.increment(request.user_id, "credit", request.amount)
             logging.info(
                 "Added funds: %s to user %s; new credit: %s",
                 request.amount,
                 request.user_id,
                 user_model.credit,
             )
-            return common_pb2.Empty()
+            return common_pb2.OperationResponse(success=True)
         except Exception as e:
             logging.exception("Error in AddFunds")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     def ProcessPayment(self, request, context):
-        print("AAAAAAAAAAAAA")
         try:
-            user_model = db.get(request.user_id, User)
-            if user_model is None:
-                context.abort(
-                    grpc.StatusCode.NOT_FOUND, f"User: {request.user_id} not found!"
+            user_id = request.user_id
+            with db.transaction(
+                TransactionConfig(begin={"watch": [(user_id, "credit")]})
+            ) as transaction:
+                user_credit = transaction.get_attribute(user_id, "credit", User)
+                if user_credit is None:
+                    return payment_pb2.PaymentResponse(
+                        success=False, error=f"User: {request.user_id} not found!"
+                    )
+                if user_credit < request.amount:
+                    logging.error(
+                        "Payment failed for user %s: insufficient credit",
+                        request.user_id,
+                    )
+                    return payment_pb2.PaymentResponse(
+                        success=False, error="Insufficient funds"
+                    )
+                transaction.decrement(user_id, "credit", request.amount)
+
+                logging.info(
+                    "Processed payment for user %s; new credit: %s",
+                    request.user_id,
+                    user_credit - request.amount,
                 )
-            if user_model.credit < request.amount:
-                logging.error(
-                    "Payment failed for user %s: insufficient credit", request.user_id
-                )
-                return payment_pb2.PaymentResponse(success=False)
-            user_model.credit -= request.amount
-            db.save(user_model)
-            logging.info(
-                "Processed payment for user %s; new credit: %s",
-                request.user_id,
-                user_model.credit,
-            )
-            return payment_pb2.PaymentResponse(success=True)
+                return payment_pb2.PaymentResponse(success=True)
         except Exception as e:
             logging.exception("Error in ProcessPayment")
             context.abort(grpc.StatusCode.INTERNAL, str(e))

@@ -14,13 +14,13 @@ T = TypeVar("T")
 class TransactionConfig:
     def __init__(
         self,
-        extra_begin_args: Optional[Dict[str, Any]] = None,
-        extra_commit_args: Optional[Dict[str, Any]] = None,
-        extra_rollback_args: Optional[Dict[str, Any]] = None,
+        begin: Optional[Dict[str, Any]] = None,
+        commit: Optional[Dict[str, Any]] = None,
+        rollback: Optional[Dict[str, Any]] = None,
     ):
-        self.extra_begin_args = extra_begin_args or {}
-        self.extra_commit_args = extra_commit_args or {}
-        self.extra_rollback_args = extra_rollback_args or {}
+        self.begin = begin or {}
+        self.commit = commit or {}
+        self.rollback = rollback or {}
 
 
 class TransactionError(Exception):
@@ -69,6 +69,16 @@ class DatabaseClient(ABC, Generic[T]):
         pass
 
     @abstractmethod
+    def get_attribute(self, id: str, attribute: str, model_class: Type[T]) -> Any:
+        pass
+
+    @abstractmethod
+    def set_attribute(
+        self, id: str, attribute: str, value: Any, model_class: Type[T]
+    ) -> None:
+        pass
+
+    @abstractmethod
     def increment(self, id: str, attribute: str, amount: int = 1) -> int:
         pass
 
@@ -82,37 +92,6 @@ class DatabaseClient(ABC, Generic[T]):
     ) -> bool:
         pass
 
-    @abstractmethod
-    def list_append(self, id: str, attribute: str, value: Any) -> int:
-        """
-        Append a value to a list attribute.
-        Returns the new length of the list.
-        """
-        pass
-
-    @abstractmethod
-    def list_remove(self, id: str, attribute: str, value: Any) -> bool:
-        """
-        Remove a value from a list attribute.
-        Returns True if the value was removed.
-        """
-        pass
-
-    @abstractmethod
-    def list_get(self, id: str, attribute: str, index: int) -> Any:
-        """
-        Get a value from a list attribute at the specified index.
-        """
-        pass
-
-    @abstractmethod
-    def list_set(self, id: str, attribute: str, index: int, value: Any) -> bool:
-        """
-        Set a value in a list attribute at the specified index.
-        Returns True if successful.
-        """
-        pass
-
     @contextmanager
     def transaction(
         self,
@@ -122,20 +101,25 @@ class DatabaseClient(ABC, Generic[T]):
         Context manager for atomic transactions with configurable isolation and concurrency.
 
         Args:
-            isolation: Override default transaction isolation level
-            concurrency: Override default transaction concurrency mode
+            config: Transaction configuration
         """
+        transactional_client = self._create_transactional_client()
         try:
-            self._begin_transaction(**config.extra_begin_args)
-            yield
-            self._commit_transaction(**config.extra_commit_args)
+            transactional_client._begin_transaction(**config.begin)
+            yield transactional_client
+            transactional_client._commit_transaction(**config.commit)
         except Exception as e:
-            self._rollback_transaction(**config.extra_rollback_args)
+            transactional_client._rollback_transaction(**config.rollback)
             raise TransactionError(f"Transaction failed: {str(e)}")
 
     @abstractmethod
     def close(self):
         """Close the database client connection"""
+        pass
+
+    @abstractmethod
+    def _create_transactional_client(self) -> "DatabaseClient[T]":
+        """Create a new instance of the database client in a transactional state."""
         pass
 
     @abstractmethod
@@ -157,12 +141,20 @@ class DatabaseClient(ABC, Generic[T]):
 
 class RedisClient(DatabaseClient[T]):
     def __init__(
-        self, host: str = "localhost", port: int = 6379, password: str = "", db: int = 0
+        self,
+        host: str = "localhost",
+        port: int = 6379,
+        password: str = "",
+        db: int = 0,
+        pipeline=None,
     ):
-        self.redis = redis.Redis(
-            host=host, port=port, password=password, db=db, decode_responses=True
-        )
-        self.pipeline: Optional[redis.client.Pipeline] = None
+        if pipeline:
+            self.pipeline = pipeline
+        else:
+            self.redis = redis.Redis(
+                host=host, port=port, password=password, db=db, decode_responses=True
+            )
+            self.pipeline: Optional[redis.client.Pipeline] = None
 
     def _get_client(self):
         return self.pipeline if self.pipeline is not None else self.redis
@@ -172,6 +164,12 @@ class RedisClient(DatabaseClient[T]):
 
     def _get_model_keys_pattern(self, id: str) -> str:
         return f"model:{id}:*"
+
+    def _prepare_for_changes(self) -> None:
+        if self.pipeline is None:
+            return
+        else:
+            self.pipeline.multi()
 
     def get(self, id: str, model_class: Type[T]) -> Optional[T]:
         client = self._get_client()
@@ -209,6 +207,8 @@ class RedisClient(DatabaseClient[T]):
         if not hasattr(model, "id"):
             raise ValueError("Model must have an id attribute")
 
+        self._prepare_for_changes()
+
         client = self._get_client()
         model_dict = asdict(model)
 
@@ -226,67 +226,6 @@ class RedisClient(DatabaseClient[T]):
         if self.pipeline is None:
             pipe.execute()
 
-    def list_append(self, id: str, attribute: str, value: Any) -> int:
-        key = self._get_key(id, attribute)
-        with self.redis.pipeline() as pipe:
-            while True:
-                try:
-                    pipe.watch(key)
-                    current_list = json.loads(pipe.get(key) or "[]")
-                    current_list.append(value)
-
-                    pipe.multi()
-                    pipe.set(key, json.dumps(current_list))
-                    pipe.execute()
-                    return len(current_list)
-                except redis.WatchError:
-                    continue
-
-    def list_remove(self, id: str, attribute: str, value: Any) -> bool:
-        key = self._get_key(id, attribute)
-        with self.redis.pipeline() as pipe:
-            while True:
-                try:
-                    pipe.watch(key)
-                    current_list = json.loads(pipe.get(key) or "[]")
-                    if value not in current_list:
-                        pipe.unwatch()
-                        return False
-
-                    current_list.remove(value)
-                    pipe.multi()
-                    pipe.set(key, json.dumps(current_list))
-                    pipe.execute()
-                    return True
-                except redis.WatchError:
-                    continue
-
-    def list_get(self, id: str, attribute: str, index: int) -> Any:
-        key = self._get_key(id, attribute)
-        current_list = json.loads(self.redis.get(key) or "[]")
-        if 0 <= index < len(current_list):
-            return current_list[index]
-        raise IndexError("List index out of range")
-
-    def list_set(self, id: str, attribute: str, index: int, value: Any) -> bool:
-        key = self._get_key(id, attribute)
-        with self.redis.pipeline() as pipe:
-            while True:
-                try:
-                    pipe.watch(key)
-                    current_list = json.loads(pipe.get(key) or "[]")
-                    if not (0 <= index < len(current_list)):
-                        pipe.unwatch()
-                        return False
-
-                    current_list[index] = value
-                    pipe.multi()
-                    pipe.set(key, json.dumps(current_list))
-                    pipe.execute()
-                    return True
-                except redis.WatchError:
-                    continue
-
     def delete(self, id: str) -> bool:
         client = self._get_client()
         # Get all keys for this model
@@ -298,11 +237,47 @@ class RedisClient(DatabaseClient[T]):
         client.delete(*keys)
         return True
 
+    def get_attribute(self, id: str, attribute: str, model_class: Type[T]) -> Any:
+        client = self._get_client()
+        key = self._get_key(id, attribute)
+        value = client.get(key)
+
+        if value is None:
+            field = next((f for f in fields(model_class) if f.name == attribute), None)
+            if field is not None:
+                if field.default is not dataclass.MISSING:
+                    return field.default
+                elif field.default_factory is not dataclass.MISSING:
+                    return field.default_factory()
+            return None
+
+        field_type = model_class.__annotations__.get(attribute)
+        return self._deserialize_value(value, field_type)
+
+    def set_attribute(
+        self, id: str, attribute: str, value: Any, model_class: Type[T]
+    ) -> None:
+        self._prepare_for_changes()
+
+        client = self._get_client()
+        key = self._get_key(id, attribute)
+        field_type = model_class.__annotations__.get(attribute)
+
+        field_type = model_class.__annotations__.get(attribute)
+        serialized_value = self._serialize_value(value, field_type)
+
+        client.set(key, serialized_value)
+
     def increment(self, id: str, attribute: str, amount: int = 1) -> int:
+        self._prepare_for_changes()
         client = self._get_client()
         try:
             result = client.incrby(self._get_key(id, attribute), amount)
-            return int(result)
+            if self.pipeline is None:
+                return int(result)
+
+            return result
+
         except redis.ResponseError:
             raise ValueError(f"Attribute {attribute} is not numeric")
 
@@ -347,16 +322,24 @@ class RedisClient(DatabaseClient[T]):
         """Close the Redis client connection"""
         self.redis.close()
 
-    def _begin_transaction(self) -> None:
-        self.pipeline = self.redis.pipeline()
+    def _create_transactional_client(self) -> "RedisClient[T]":
+        """Create a new RedisClient instance in a transactional state."""
+        client = RedisClient(pipeline=self._get_client().pipeline())
+        return client
+
+    def _begin_transaction(self, watch=[]) -> None:
+        for id, attr in watch:
+            self.pipeline.watch(self._get_key(id, attr))
 
     def _commit_transaction(self) -> None:
         if self.pipeline:
             self.pipeline.execute()
+            self.pipeline.unwatch()
             self.pipeline = None
 
     def _rollback_transaction(self) -> None:
         if self.pipeline:
+            self.pipeline.unwatch()
             self.pipeline.reset()
             self.pipeline = None
 
@@ -439,54 +422,6 @@ class IgniteClient(DatabaseClient[T]):
 
         self.cache.put_all(updates)
 
-    def list_append(self, id: str, attribute: str, value: Any) -> int:
-        key = self._get_key(id, attribute)
-        while True:
-            try:
-                with self.transaction(
-                    isolation=TransactionIsolation.SERIALIZABLE,
-                    concurrency=TransactionConcurrency.PESSIMISTIC,
-                ):
-                    current_list = json.loads(self.cache.get(key) or "[]")
-                    current_list.append(value)
-                    self.cache.put(key, json.dumps(current_list))
-                    return len(current_list)
-            except OptimisticLockError:
-                continue
-
-    def list_remove(self, id: str, attribute: str, value: Any) -> bool:
-        key = self._get_key(id, attribute)
-        with self.transaction(
-            isolation=TransactionIsolation.SERIALIZABLE,
-            concurrency=TransactionConcurrency.PESSIMISTIC,
-        ):
-            current_list = json.loads(self.cache.get(key) or "[]")
-            if value not in current_list:
-                return False
-            current_list.remove(value)
-            self.cache.put(key, json.dumps(current_list))
-            return True
-
-    def list_get(self, id: str, attribute: str, index: int) -> Any:
-        key = self._get_key(id, attribute)
-        current_list = json.loads(self.cache.get(key) or "[]")
-        if 0 <= index < len(current_list):
-            return current_list[index]
-        raise IndexError("List index out of range")
-
-    def list_set(self, id: str, attribute: str, index: int, value: Any) -> bool:
-        key = self._get_key(id, attribute)
-        with self.transaction(
-            isolation=TransactionIsolation.SERIALIZABLE,
-            concurrency=TransactionConcurrency.PESSIMISTIC,
-        ):
-            current_list = json.loads(self.cache.get(key) or "[]")
-            if not (0 <= index < len(current_list)):
-                return False
-            current_list[index] = value
-            self.cache.put(key, json.dumps(current_list))
-            return True
-
     def delete(self, id: str) -> bool:
         # Get all keys for this model
         keys = [key for key in self.cache.keys() if key.startswith(f"model:{id}:")]
@@ -496,6 +431,32 @@ class IgniteClient(DatabaseClient[T]):
 
         self.cache.remove_all(keys)
         return True
+
+    def get_attribute(self, id: str, attribute: str, model_class: Type[T]) -> Any:
+        key = self._get_key(id, attribute)
+        value = self.cache.get(key)
+
+        if value is None:
+            field = next((f for f in fields(model_class) if f.name == attribute), None)
+            if field is not None:
+                if field.default is not dataclass.MISSING:
+                    return field.default
+                elif field.default_factory is not dataclass.MISSING:
+                    return field.default_factory()
+            return None
+
+        field_type = model_class.__annotations__.get(attribute)
+        return self._deserialize_value(value, field_type)
+
+    def set_attribute(
+        self, id: str, attribute: str, value: Any, model_class: Type[T]
+    ) -> None:
+        key = self._get_key(id, attribute)
+        field_type = model_class.__annotations__.get(attribute)
+
+        serialized_value = self._serialize_value(value, field_type)
+
+        self.cache.put(key, serialized_value)
 
     def increment(self, id: str, attribute: str, amount: int = 1) -> int:
         key = self._get_key(id, attribute)
@@ -538,6 +499,9 @@ class IgniteClient(DatabaseClient[T]):
     def close(self):
         """Close the Ignite client connection"""
         self.client.close()
+
+    def _create_transactional_client(self) -> "IgniteClient[T]":
+        return self
 
     def _begin_transaction(
         self,

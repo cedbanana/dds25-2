@@ -39,7 +39,7 @@ def create_order(user_id: str):
 def add_item(order_id: str, item_id: str, quantity: int):
     order = get_order_from_db(order_id)
     try:
-        # Call the Stock service (gRPC client) to get item price.
+        # Call the Stock service (gRPC client) to get item details.
         item_response = stock_client.FindItem(ItemRequest(item_id=item_id))
     except Exception as e:
         current_app.logger.exception("Error calling StockService for item %s", item_id)
@@ -63,12 +63,26 @@ def add_item(order_id: str, item_id: str, quantity: int):
     return Response(f"Item {item_id} added. Total: {order.total_cost}", status=200)
 
 
+def revert_items(items):
+    for item_id, qty in items.items():
+        try:
+            stock_client.AddStock(StockAdjustment(item_id=item_id, quantity=qty))
+        except Exception as e:
+            current_app.logger.exception(
+                "Error calling AddStock for item %s during order revert", item_id
+            )
+            abort(400, "Error communicating with stock service")
+        current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
+
+
 @order_blueprint.post("/checkout/<order_id>")
 def checkout(order_id: str):
     order = get_order_from_db(order_id)
     items = defaultdict(int)
     for item_id, qty in order.items:
         items[item_id] += qty
+
+    deducted_items = {}
 
     # Deduct stock for each item.
     for item_id, total_qty in items.items():
@@ -80,10 +94,17 @@ def checkout(order_id: str):
             current_app.logger.exception(
                 "Error calling RemoveStock for item %s", item_id
             )
+            revert_items(deducted_items)
             abort(400, "Error communicating with stock service")
         if not stock_response.success:
-            current_app.logger.error("Insufficient stock for item: %s", item_id)
-            abort(400, f"Insufficient stock for {item_id}")
+            err_msg = stock_response.error or f"Insufficient stock for {item_id}"
+            current_app.logger.error(
+                "Stock deduction failed for item %s: %s", item_id, err_msg
+            )
+            revert_items(deducted_items)
+            abort(400, err_msg)
+        else:
+            deducted_items[item_id] = total_qty
 
     # Process payment.
     try:
@@ -94,10 +115,13 @@ def checkout(order_id: str):
         current_app.logger.exception(
             "Error calling ProcessPayment for user %s", order.user_id
         )
+        revert_items(deducted_items)
         abort(400, "Error communicating with payment service")
     if not payment_response.success:
-        current_app.logger.error("Payment failed for order %s", order_id)
-        abort(400, "Payment failed")
+        err_msg = payment_response.error or "Payment failed"
+        current_app.logger.error("Payment failed for order %s: %s", order_id, err_msg)
+        revert_items(deducted_items)
+        abort(400, err_msg)
 
     order.paid = True
     try:

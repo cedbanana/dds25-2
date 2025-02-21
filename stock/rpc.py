@@ -1,6 +1,7 @@
 import logging
 from concurrent import futures
 import grpc
+from database import TransactionConfig
 
 from config import db
 from models import Stock
@@ -24,8 +25,8 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         try:
             stock_model = db.get(request.item_id, Stock)
             if stock_model is None:
-                context.abort(
-                    grpc.StatusCode.NOT_FOUND, f"Item: {request.item_id} not found!"
+                return common_pb2.OperationResponse(
+                    success=False, error=f"Item: {request.item_id} not found!"
                 )
             stock_model.stock += request.quantity
             db.save(stock_model)
@@ -35,29 +36,39 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 request.item_id,
                 stock_model.stock,
             )
-            return common_pb2.Empty()
+            return common_pb2.OperationResponse(success=True)
         except Exception as e:
             logging.exception("Error in AddStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     def RemoveStock(self, request, context):
         try:
-            stock_model = db.get(request.item_id, Stock)
-            if stock_model is None:
-                context.abort(
-                    grpc.StatusCode.NOT_FOUND, f"Item: {request.item_id} not found!"
+            item_id = request.item_id
+
+            with db.transaction(
+                TransactionConfig(begin={"watch": [(item_id, "stock")]})
+            ) as transaction:
+                stock = transaction.get_attribute(item_id, "stock", Stock)
+                if stock is None:
+                    return common_pb2.OperationResponse(
+                        success=False, error=f"Item: {request.item_id} not found!"
+                    )
+                # Instead of aborting here, return an error message if not enough stock.
+                if stock < request.quantity:
+                    logging.error("Insufficient stock for item: %s", request.item_id)
+                    return common_pb2.OperationResponse(
+                        success=False, error="Insufficient stock"
+                    )
+
+                transaction.decrement(item_id, "stock", request.quantity)
+
+                logging.info(
+                    "Removed %s from item %s; new stock: %s",
+                    request.quantity,
+                    request.item_id,
+                    stock - request.quantity,
                 )
-            stock_model.stock -= request.quantity
-            if stock_model.stock < 0:
-                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "Insufficient stock")
-            db.save(stock_model)
-            logging.info(
-                "Removed %s from item %s; new stock: %s",
-                request.quantity,
-                request.item_id,
-                stock_model.stock,
-            )
-            return common_pb2.Empty()
+                return common_pb2.OperationResponse(success=True)
         except Exception as e:
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))

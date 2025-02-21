@@ -5,7 +5,7 @@ package payment;
 import "proto/common.proto";
 
 service PaymentService {
-  rpc AddFunds(AddFundsRequest) returns (common.Empty);
+  rpc AddFunds(AddFundsRequest) returns (common.OperationResponse);
   rpc ProcessPayment(PaymentRequest) returns (PaymentResponse);
   rpc FindUser(FindUserRequest) returns (FindUserResponse);
 }
@@ -27,6 +27,7 @@ message PaymentRequest {
 
 message PaymentResponse {
   bool success = 1;
+  string error = 2;
 }
 
 message FindUserRequest {

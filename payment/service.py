@@ -1,5 +1,7 @@
+from typing import Any
 import uuid
 from flask import Blueprint, jsonify, Response, abort, current_app
+from database import TransactionConfig
 from config import db
 from models import User
 
@@ -7,7 +9,7 @@ payment_blueprint = Blueprint("payment", __name__)
 DB_ERROR_STR = "DB error"
 
 
-def get_user_from_db(user_id: str) -> User:
+def get_user_from_db(user_id: str, db=db) -> User:
     try:
         user = db.get(user_id, User)
         if user is None:
@@ -19,14 +21,24 @@ def get_user_from_db(user_id: str) -> User:
         abort(400, DB_ERROR_STR)
 
 
+def get_user_field_from_db(user_id: str, field: str, db=db) -> Any:
+    try:
+        field = db.get_attribute(user_id, field, User)
+        if field is None:
+            current_app.logger.error("User not found: %s", user_id)
+            abort(400, f"User: {user_id} not found!")
+        return field
+    except Exception as e:
+        current_app.logger.exception("Failed to retrieve user: %s", user_id)
+        abort(400, DB_ERROR_STR)
+
+
 @payment_blueprint.post("/create_user")
 def create_user():
     key = str(uuid.uuid4())
     user = User(id=key, credit=0)
     try:
-        print("YCCCC")
         db.save(user)
-        print("YDDDD")
         current_app.logger.info("Created new user: %s", key)
     except Exception as e:
         current_app.logger.exception("Failed to save new user: %s", key)
@@ -58,9 +70,8 @@ def find_user(user_id: str):
 @payment_blueprint.post("/add_funds/<user_id>/<amount>")
 def add_credit(user_id: str, amount: int):
     user_entry = get_user_from_db(user_id)
-    user_entry.credit += int(amount)
     try:
-        db.save(user_entry)
+        user_entry.credit = db.increment(user_id, "credit", amount)
         current_app.logger.info(
             "Added funds to user %s; new credit: %s", user_id, user_entry.credit
         )
@@ -72,21 +83,29 @@ def add_credit(user_id: str, amount: int):
     )
 
 
-@payment_blueprint.post("/pay/<user_id>/<amount>")
+@payment_blueprint.post("/pay/<user_id>/<int:amount>")
 def remove_credit(user_id: str, amount: int):
-    user_entry = get_user_from_db(user_id)
-    user_entry.credit -= int(amount)
-    if user_entry.credit < 0:
-        current_app.logger.error("User %s credit cannot be reduced below zero", user_id)
-        abort(400, f"User: {user_id} credit cannot get reduced below zero!")
-    try:
-        db.save(user_entry)
-        current_app.logger.info(
-            "Processed payment for user %s; new credit: %s", user_id, user_entry.credit
+    with db.transaction(
+        TransactionConfig(begin={"watch": [(user_id, "credit")]})
+    ) as transaction:
+        user_credit = get_user_field_from_db(user_id, "credit", db=transaction)
+        if user_credit < amount:
+            current_app.logger.error(
+                "User %s credit cannot be reduced below zero", user_id
+            )
+            abort(400, f"User: {user_id} credit cannot get reduced below zero!")
+        try:
+            transaction.decrement(user_id, "credit", amount)
+            current_app.logger.info(
+                "Processed payment for user %s; new credit: %s",
+                user_id,
+                user_credit - amount,
+            )
+        except Exception as e:
+            current_app.logger.exception(
+                "Failed to update credit for user: %s", user_id
+            )
+            abort(400, DB_ERROR_STR)
+        return Response(
+            f"User: {user_id} credit updated to: {user_credit - amount}", status=200
         )
-    except Exception as e:
-        current_app.logger.exception("Failed to update credit for user: %s", user_id)
-        abort(400, DB_ERROR_STR)
-    return Response(
-        f"User: {user_id} credit updated to: {user_entry.credit}", status=200
-    )
