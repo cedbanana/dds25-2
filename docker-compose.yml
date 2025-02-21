@@ -27,7 +27,7 @@ services:
     env_file:
       - env/order_redis.env
     environment: &dbenv
-      DB_TYPE: ignite
+      DB_TYPE: redis
     depends_on:
       - ignite
       - redis
@@ -84,6 +84,7 @@ services:
       - "traefik.http.routers.payment.middlewares=payment-stripprefix"
       - "traefik.http.services.payment.loadbalancer.server.port=5000"
 
+  ## Database Solutions
   redis:
     image: redis:7.2-bookworm
     command: redis-server --requirepass redis --maxmemory 1024mb
@@ -99,6 +100,39 @@ services:
       default:
       devnet_dds:
         ipv4_address: 172.172.69.11
+
+  ## Monitoring Solutions
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      default:
+      devnet_dds:
+        ipv4_address: 172.172.69.12
+    depends_on:
+      - order-service
+      - stock-service
+      - payment-service
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    networks:
+      default:
+      devnet_dds:
+        ipv4_address: 172.172.69.13
+    depends_on:
+      - prometheus
 
 networks:
   devnet_dds:

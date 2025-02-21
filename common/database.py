@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
+import logging
 from typing import TypeVar, Generic, Type, Optional, Dict, Any, cast, get_origin
-from dataclasses import dataclass, asdict, fields
+from dataclasses import MISSING, asdict, fields
 from contextlib import contextmanager
 import random
 import redis
@@ -9,6 +10,8 @@ from pyignite import Client
 from pyignite.datatypes.cache_config import CacheAtomicityMode
 from pyignite.datatypes import TransactionConcurrency, TransactionIsolation
 from pyignite.datatypes.prop_codes import PROP_CACHE_ATOMICITY_MODE, PROP_NAME
+import pyignite.datatypes.primitive_objects as itypes_primitive
+import pyignite.datatypes.standard as itypes_standard
 
 T = TypeVar("T")
 
@@ -20,11 +23,13 @@ class TransactionConfig:
         begin: Optional[Dict[str, Any]] = None,
         commit: Optional[Dict[str, Any]] = None,
         rollback: Optional[Dict[str, Any]] = None,
+        end: Optional[Dict[str, Any]] = None,
     ):
         self.init = init or {}
         self.begin = begin or {}
         self.commit = commit or {}
         self.rollback = rollback or {}
+        self.end = rollback or {}
 
 
 class TransactionError(Exception):
@@ -112,6 +117,8 @@ class DatabaseClient(ABC, Generic[T]):
         except Exception as e:
             transactional_client._rollback_transaction(**config.rollback)
             raise TransactionError(f"Transaction failed: {str(e)}")
+        finally:
+            transactional_client._end_transaction(**config.end)
 
     @abstractmethod
     def close(self):
@@ -137,6 +144,10 @@ class DatabaseClient(ABC, Generic[T]):
 
     @abstractmethod
     def _rollback_transaction(self) -> None:
+        pass
+
+    @abstractmethod
+    def _end_transaction(self, **kwargs) -> None:
         pass
 
 
@@ -192,9 +203,9 @@ class RedisClient(DatabaseClient[T]):
 
             value = attributes.get(field_name)
             if value is None:
-                if field.default is not dataclass.MISSING:
+                if field.default is not MISSING:
                     converted_data[field_name] = field.default
-                elif field.default_factory is not dataclass.MISSING:
+                elif field.default_factory is not MISSING:
                     converted_data[field_name] = field.default_factory()
                 continue
 
@@ -246,9 +257,9 @@ class RedisClient(DatabaseClient[T]):
         if value is None:
             field = next((f for f in fields(model_class) if f.name == attribute), None)
             if field is not None:
-                if field.default is not dataclass.MISSING:
+                if field.default is not MISSING:
                     return field.default
-                elif field.default_factory is not dataclass.MISSING:
+                elif field.default_factory is not MISSING:
                     return field.default_factory()
             return None
 
@@ -344,6 +355,9 @@ class RedisClient(DatabaseClient[T]):
             self.pipeline.reset()
             self.pipeline = None
 
+    def _end_transaction(self, **kwargs) -> None:
+        pass
+
 
 # [Previous Redis implementation remains the same, but updated to handle transaction config]
 
@@ -373,6 +387,21 @@ class IgniteClient(DatabaseClient[T]):
             # Create cache for storing model attributes
             self.cache = self.client.get_or_create_cache(cache_conf)
 
+    def _value_hint(self, model_class: Type[T], field: str) -> str:
+        field_type = model_class.__annotations__.get(field)
+
+        if field_type is int:
+            return itypes_primitive.IntObject
+        elif field_type is float:
+            return itypes_primitive.FloatObject
+        elif field_type is bool:
+            return itypes_primitive.BoolObject
+        elif get_origin(field_type) is list:
+            return itypes_standard.StringArrayObject
+        elif field_type is None:
+            return None
+        return itypes_standard.String
+
     def _get_key(self, id: str, attribute: str) -> str:
         return f"model:{id}:{attribute}"
 
@@ -392,14 +421,13 @@ class IgniteClient(DatabaseClient[T]):
 
         for field_name in field_names:
             key = self._get_key(id, field_name)
-            field_type = model_class.__annotations__.get(field_name)
-            value = self._deserialize_value(values.get(key), field_type)
+            value = values.get(key)
 
             if value is None:
                 field = next(f for f in fields(model_class) if f.name == field_name)
-                if field.default is not dataclass.MISSING:
+                if field.default is not MISSING:
                     converted_data[field_name] = field.default
-                elif field.default_factory is not dataclass.MISSING:
+                elif field.default_factory is not MISSING:
                     converted_data[field_name] = field.default_factory()
                 continue
 
@@ -415,11 +443,9 @@ class IgniteClient(DatabaseClient[T]):
         model_class = type(model)
 
         updates = {
-            self._get_key(model.id, attr): self._serialize_value(
-                value, model_class.__annotations__[attr]
-            )
+            self._get_key(model.id, attr): (value, self._value_hint(model_class, attr))
             for attr, value in model_dict.items()
-            if attr != "id"
+            if attr != "id" and (not isinstance(value, list) or len(value) > 0)
         }
 
         self.cache.put_all(updates)
@@ -436,29 +462,33 @@ class IgniteClient(DatabaseClient[T]):
 
     def get_attribute(self, id: str, attribute: str, model_class: Type[T]) -> Any:
         key = self._get_key(id, attribute)
-        value = self.cache.get(key)
+        value = self.cache.get(key, key_hint=itypes_standard.String)
 
         if value is None:
             field = next((f for f in fields(model_class) if f.name == attribute), None)
             if field is not None:
-                if field.default is not dataclass.MISSING:
+                if field.default is not MISSING:
                     return field.default
-                elif field.default_factory is not dataclass.MISSING:
+                elif field.default_factory is not MISSING:
                     return field.default_factory()
             return None
 
-        field_type = model_class.__annotations__.get(attribute)
-        return self._deserialize_value(value, field_type)
+        return value
 
     def set_attribute(
         self, id: str, attribute: str, value: Any, model_class: Type[T]
     ) -> None:
         key = self._get_key(id, attribute)
-        field_type = model_class.__annotations__.get(attribute)
 
-        serialized_value = self._serialize_value(value, field_type)
-
-        self.cache.put(key, serialized_value)
+        if isinstance(value, list) and len(value) == 0:
+            self.cache.remove(key)
+        else:
+            logging.error(
+                f"Setting attribute {attribute} to {value}, hint: {self._value_hint(model_class, attribute)}"
+            )
+            self.cache.put(
+                key, value, value_hint=self._value_hint(model_class, attribute)
+            )
 
     def _simple_increment(self, id: str, attribute: str, amount: int) -> int:
         key = self._get_key(id, attribute)
@@ -468,12 +498,13 @@ class IgniteClient(DatabaseClient[T]):
             raise ValueError(f"Attribute {attribute} not found")
 
         new_value = int(current) + amount
-        self.cache.put(key, str(new_value))
+        self.cache.put(key, new_value, value_hint=itypes_primitive.IntObject)
         return new_value
 
     def increment(self, id: str, attribute: str, amount: int = 1) -> int:
         if self.tx is not None:
-            return self._simple_increment(id, attribute, amount)
+            val = self._simple_increment(id, attribute, amount)
+            return val
 
         while True:
             try:
@@ -512,33 +543,45 @@ class IgniteClient(DatabaseClient[T]):
             self.cache.put(key, str(new_value))
             return True
 
-    def _create_transactional_client(
+    @contextmanager
+    def transaction(
         self,
-        isolation: TransactionIsolation = TransactionIsolation.SERIALIZABLE,
-        concurrency: TransactionConcurrency = TransactionConcurrency.PESSIMISTIC,
-        **kwargs,
-    ) -> "IgniteClient[T]":
-        tx = self.client.tx_start(concurrency=concurrency, isolation=isolation)
-        ic = IgniteClient(tx=tx)
-        ic.cache = self.cache
-        ic.client = self.client
-        return ic
+        config: TransactionConfig = TransactionConfig(),
+    ):
+        """
+        Context manager for atomic transactions with configurable isolation and concurrency.
 
-    def _begin_transaction(self, **kwargs) -> None:
-        pass
-
-    def _commit_transaction(self, **kwargs) -> None:
-        if self.tx:
-            self.tx.commit()
-            self.tx.close()
-            self.tx = None
-
-    def _rollback_transaction(self, **kwargs) -> None:
-        if self.tx:
-            self.tx.rollback()
-            self.tx.close()
-            self.tx = None
+        Args:
+            config: Transaction configuration
+        """
+        with self.client.tx_start(**config.init) as tx:
+            logging.error(tx.tx_id)
+            try:
+                yield self
+                tx.commit()
+            except Exception as e:
+                tx.rollback()
+                raise TransactionError(f"Transaction failed: {str(e)}")
 
     def close(self):
         """Close the Ignite client connection"""
         self.client.close()
+
+    def _create_transactional_client(self) -> "DatabaseClient[T]":
+        pass
+
+    def _begin_transaction(
+        self,
+        isolation: Optional[TransactionIsolation],
+        concurrency: Optional[TransactionConcurrency],
+    ) -> None:
+        pass
+
+    def _commit_transaction(self) -> None:
+        pass
+
+    def _rollback_transaction(self) -> None:
+        pass
+
+    def _end_transaction(self, **kwargs) -> None:
+        pass

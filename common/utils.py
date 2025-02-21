@@ -7,4 +7,4 @@ def hosttotup(host):
 
 
 def wait_for_ignite():
-    time.sleep(5)
+    time.sleep(6)

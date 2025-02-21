@@ -49,7 +49,7 @@ def add_item(order_id: str, item_id: str, quantity: int):
         abort(400, f"Item {item_id} not found")
 
     # Append a tuple (item_id, quantity) to the order.
-    order.items.append((item_id, int(quantity)))
+    order.items.append(f"{item_id}:{int(quantity)}")
     order.total_cost += int(quantity) * item_response.price
 
     try:
@@ -96,8 +96,10 @@ def revert_items(items):
 def checkout(order_id: str):
     order = get_order_from_db(order_id)
     items = defaultdict(int)
-    for item_id, qty in order.items:
-        items[item_id] += qty
+
+    for item in order.items:
+        item_id, qty = item.split(":")
+        items[item_id] += int(qty)
 
     deducted_items = {}
 

@@ -7,15 +7,17 @@ if not os.path.isdir("common"):
 
 import atexit
 import logging
-from flask import Flask
 import threading
-from config import db
+from flask import Flask
+from prometheus_flask_exporter import PrometheusMetrics  # New import
+
 from service import stock_blueprint
+from config import db
 from rpc import grpc_server
 
 app = Flask("stock-service")
 
-# Register the Blueprint
+
 app.register_blueprint(stock_blueprint)
 
 
@@ -24,14 +26,13 @@ def cleanup():
     db.close()
 
 
+metrics = PrometheusMetrics(app)
+grpc_thread = threading.Thread(target=grpc_server, daemon=True)
+grpc_thread.start()
+
 if __name__ == "__main__":
-    grpc_thread = threading.Thread(target=grpc_server, daemon=True)
-    grpc_thread.start()
     app.run(host="0.0.0.0", port=8000, debug=True)
 else:
-    grpc_thread = threading.Thread(target=grpc_server, daemon=True)
-    grpc_thread.start()
-
     gunicorn_logger = logging.getLogger("gunicorn.error")
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)

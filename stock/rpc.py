@@ -2,10 +2,12 @@ import logging
 from concurrent import futures
 import grpc
 from database import TransactionConfig
+from pyignite.datatypes import TransactionConcurrency, TransactionIsolation
 
 from config import db
 from models import Stock
 from proto import stock_pb2_grpc, common_pb2
+from py_grpc_prometheus.prometheus_server_interceptor import PromServerInterceptor
 
 
 class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
@@ -45,7 +47,13 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             item_id = request.item_id
 
             with db.transaction(
-                TransactionConfig(begin={"watch": [(item_id, "stock")]})
+                TransactionConfig(
+                    init={
+                        "isolation": TransactionIsolation.SERIALIZABLE,
+                        "concurrency": TransactionConcurrency.PESSIMISTIC,
+                    },
+                    begin={"watch": [(item_id, "stock")]},
+                )
             ) as transaction:
                 stock = transaction.get_attribute(item_id, "stock", Stock)
                 if stock is None:
@@ -60,7 +68,9 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                     )
 
                 logging.error("Decrementing stock for item: %s", request.item_id)
-                transaction.decrement(item_id, "stock", request.quantity)
+                transaction.set_attribute(
+                    item_id, "stock", int(stock - request.quantity), Stock
+                )
 
                 logging.info(
                     "Removed %s from item %s; new stock: %s",
@@ -75,7 +85,10 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
 
 def grpc_server():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    interceptor = PromServerInterceptor()
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10), interceptors=(interceptor,)
+    )
     stock_pb2_grpc.add_StockServiceServicer_to_server(StockServiceServicer(), server)
     server.add_insecure_port("[::]:50051")
     server.start()

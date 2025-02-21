@@ -6,6 +6,7 @@ import grpc
 from config import db
 from models import User
 from proto import payment_pb2, payment_pb2_grpc, common_pb2
+from py_grpc_prometheus.prometheus_server_interceptor import PromServerInterceptor
 
 
 class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
@@ -49,7 +50,9 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
                     return payment_pb2.PaymentResponse(
                         success=False, error="Insufficient funds"
                     )
-                transaction.decrement(user_id, "credit", request.amount)
+                transaction.set_attribute(
+                    user_id, "credit", int(user_credit - request.amount), User
+                )
 
                 logging.info(
                     "Processed payment for user %s; new credit: %s",
@@ -75,7 +78,10 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
 
 
 def grpc_server():
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    interceptor = PromServerInterceptor()
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10), interceptors=(interceptor,)
+    )
     payment_pb2_grpc.add_PaymentServiceServicer_to_server(
         PaymentServiceServicer(), server
     )

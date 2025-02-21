@@ -16,6 +16,7 @@ if os.environ.get("DB_TYPE", "redis") == "redis":
         db=int(os.environ["REDIS_DB"]),
     )
 else:
+    print(list(map(hosttotup, os.environ["IGNITE_HOSTS"].split(","))))
     wait_for_ignite()
     db = IgniteClient(
         list(map(hosttotup, os.environ["IGNITE_HOSTS"].split(","))), model_class=User

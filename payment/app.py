@@ -9,13 +9,16 @@ import atexit
 import logging
 import threading
 from flask import Flask
+from prometheus_flask_exporter import PrometheusMetrics  # New import
+
 from service import payment_blueprint
 from config import db
 from rpc import grpc_server
 
 app = Flask("payment-service")
 
-# Register the Blueprint
+metrics = PrometheusMetrics(app)
+
 app.register_blueprint(payment_blueprint)
 
 
@@ -27,6 +30,7 @@ def cleanup():
 if __name__ == "__main__":
     grpc_thread = threading.Thread(target=grpc_server, daemon=True)
     grpc_thread.start()
+
     app.run(host="0.0.0.0", port=8000, debug=True)
 else:
     grpc_thread = threading.Thread(target=grpc_server, daemon=True)
