@@ -2,11 +2,13 @@ from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, Type, Optional, Dict, Any, cast, get_origin
 from dataclasses import dataclass, asdict, fields
 from contextlib import contextmanager
-from enum import Enum
+import random
 import redis
 import json
-from pyignite import Client as IgniteClient
+from pyignite import Client
+from pyignite.datatypes.cache_config import CacheAtomicityMode
 from pyignite.datatypes import TransactionConcurrency, TransactionIsolation
+from pyignite.datatypes.prop_codes import PROP_CACHE_ATOMICITY_MODE, PROP_NAME
 
 T = TypeVar("T")
 
@@ -14,10 +16,12 @@ T = TypeVar("T")
 class TransactionConfig:
     def __init__(
         self,
+        init: Optional[Dict[str, Any]] = None,
         begin: Optional[Dict[str, Any]] = None,
         commit: Optional[Dict[str, Any]] = None,
         rollback: Optional[Dict[str, Any]] = None,
     ):
+        self.init = init or {}
         self.begin = begin or {}
         self.commit = commit or {}
         self.rollback = rollback or {}
@@ -32,9 +36,6 @@ class OptimisticLockError(Exception):
 
 
 class DatabaseClient(ABC, Generic[T]):
-    def __init__(self, transaction_config: Optional[TransactionConfig] = None):
-        self.transaction_config = transaction_config or TransactionConfig()
-
     def _serialize_value(self, value: Any, field_type: Type) -> str:
         """Serialize a value based on its type"""
         if get_origin(field_type) is list:
@@ -103,7 +104,7 @@ class DatabaseClient(ABC, Generic[T]):
         Args:
             config: Transaction configuration
         """
-        transactional_client = self._create_transactional_client()
+        transactional_client = self._create_transactional_client(**config.init)
         try:
             transactional_client._begin_transaction(**config.begin)
             yield transactional_client
@@ -322,22 +323,22 @@ class RedisClient(DatabaseClient[T]):
         """Close the Redis client connection"""
         self.redis.close()
 
-    def _create_transactional_client(self) -> "RedisClient[T]":
+    def _create_transactional_client(self, **kwargs) -> "RedisClient[T]":
         """Create a new RedisClient instance in a transactional state."""
         client = RedisClient(pipeline=self._get_client().pipeline())
         return client
 
-    def _begin_transaction(self, watch=[]) -> None:
+    def _begin_transaction(self, watch=[], **kwargs) -> None:
         for id, attr in watch:
             self.pipeline.watch(self._get_key(id, attr))
 
-    def _commit_transaction(self) -> None:
+    def _commit_transaction(self, **kwargs) -> None:
         if self.pipeline:
             self.pipeline.execute()
             self.pipeline.unwatch()
             self.pipeline = None
 
-    def _rollback_transaction(self) -> None:
+    def _rollback_transaction(self, **kwargs) -> None:
         if self.pipeline:
             self.pipeline.unwatch()
             self.pipeline.reset()
@@ -351,21 +352,26 @@ class IgniteClient(DatabaseClient[T]):
     def __init__(
         self,
         hosts: list[tuple[str, int]] = [("127.0.0.1", 10800)],
-        transaction_config: Optional[TransactionConfig] = None,
+        model_class: Type[T] = None,
+        additional_conf: dict = {},
+        tx=None,
     ):
-        super().__init__(transaction_config)
-        self.client = IgniteClient()
-        self.client.connect(hosts)
-        # Create cache for storing model attributes
-        self.cache = self.client.get_or_create_cache(
-            {
-                "name": "model_cache",
-                "atomicity_mode": "TRANSACTIONAL",
-                "cache_mode": "PARTITIONED",
-                "backups": 1,
+        self.tx = tx
+        if tx is None:
+            self.client = Client()
+            self.client.connect(hosts)
+
+            cache_conf = {
+                PROP_NAME: model_class.__name__
+                if model_class
+                else "model_cache_" + str(random.randint(1, 10000)),
+                PROP_CACHE_ATOMICITY_MODE: CacheAtomicityMode.TRANSACTIONAL,
             }
-        )
-        self.transaction = None
+
+            cache_conf.update(additional_conf)
+
+            # Create cache for storing model attributes
+            self.cache = self.client.get_or_create_cache(cache_conf)
 
     def _get_key(self, id: str, attribute: str) -> str:
         return f"model:{id}:{attribute}"
@@ -383,11 +389,11 @@ class IgniteClient(DatabaseClient[T]):
 
         # Convert values based on model annotations
         converted_data = {"id": id}
-        annotations = model_class.__annotations__
 
         for field_name in field_names:
             key = self._get_key(id, field_name)
-            value = self._deserialize_(values.get(key))
+            field_type = model_class.__annotations__.get(field_name)
+            value = self._deserialize_value(values.get(key), field_type)
 
             if value is None:
                 field = next(f for f in fields(model_class) if f.name == field_name)
@@ -397,15 +403,7 @@ class IgniteClient(DatabaseClient[T]):
                     converted_data[field_name] = field.default_factory()
                 continue
 
-            # Type conversion
-            if annotations[field_name] is int:
-                converted_data[field_name] = int(value)
-            elif annotations[field_name] is float:
-                converted_data[field_name] = float(value)
-            elif annotations[field_name] is bool:
-                converted_data[field_name] = value.lower() == "true"
-            else:
-                converted_data[field_name] = value
+            converted_data[field_name] = value
 
         return model_class(**converted_data)
 
@@ -414,8 +412,12 @@ class IgniteClient(DatabaseClient[T]):
             raise ValueError("Model must have an id attribute")
 
         model_dict = asdict(model)
+        model_class = type(model)
+
         updates = {
-            self._get_key(model.id, attr): self._serialize_value(value)
+            self._get_key(model.id, attr): self._serialize_value(
+                value, model_class.__annotations__[attr]
+            )
             for attr, value in model_dict.items()
             if attr != "id"
         }
@@ -458,22 +460,32 @@ class IgniteClient(DatabaseClient[T]):
 
         self.cache.put(key, serialized_value)
 
-    def increment(self, id: str, attribute: str, amount: int = 1) -> int:
+    def _simple_increment(self, id: str, attribute: str, amount: int) -> int:
         key = self._get_key(id, attribute)
+        current = self.cache.get(key)
+
+        if current is None:
+            raise ValueError(f"Attribute {attribute} not found")
+
+        new_value = int(current) + amount
+        self.cache.put(key, str(new_value))
+        return new_value
+
+    def increment(self, id: str, attribute: str, amount: int = 1) -> int:
+        if self.tx is not None:
+            return self._simple_increment(id, attribute, amount)
 
         while True:
             try:
                 with self.transaction(
-                    isolation=TransactionIsolation.SERIALIZABLE,
-                    concurrency=TransactionConcurrency.PESSIMISTIC,
+                    TransactionConfig(
+                        init={
+                            "isolation": TransactionIsolation.SERIALIZABLE,
+                            "concurrency": TransactionConcurrency.PESSIMISTIC,
+                        }
+                    )
                 ):
-                    current = self.cache.get(key)
-                    if current is None:
-                        raise ValueError(f"Attribute {attribute} not found")
-
-                    new_value = int(current) + amount
-                    self.cache.put(key, str(new_value))
-                    return new_value
+                    return self._simple_increment(id, attribute, amount)
             except OptimisticLockError:
                 continue
 
@@ -486,8 +498,12 @@ class IgniteClient(DatabaseClient[T]):
         key = self._get_key(id, attribute)
 
         with self.transaction(
-            isolation=TransactionIsolation.SERIALIZABLE,
-            concurrency=TransactionConcurrency.OPTIMISTIC,
+            TransactionConfig(
+                init={
+                    "isolation": TransactionIsolation.SERIALIZABLE,
+                    "concurrency": TransactionConcurrency.PESSIMISTIC,
+                }
+            )
         ):
             current = self.cache.get(key)
             if str(current) != str(expected_value):
@@ -496,37 +512,32 @@ class IgniteClient(DatabaseClient[T]):
             self.cache.put(key, str(new_value))
             return True
 
-    def close(self):
-        """Close the Ignite client connection"""
-        self.client.close()
-
-    def _create_transactional_client(self) -> "IgniteClient[T]":
-        return self
-
-    def _begin_transaction(
+    def _create_transactional_client(
         self,
-        isolation: Optional[TransactionIsolation] = None,
-        concurrency: Optional[TransactionConcurrency] = None,
-    ) -> None:
-        if self.transaction is not None:
-            raise TransactionError("Transaction already in progress")
+        isolation: TransactionIsolation = TransactionIsolation.SERIALIZABLE,
+        concurrency: TransactionConcurrency = TransactionConcurrency.PESSIMISTIC,
+        **kwargs,
+    ) -> "IgniteClient[T]":
+        tx = self.client.tx_start(concurrency=concurrency, isolation=isolation)
+        ic = IgniteClient(tx=tx)
+        ic.cache = self.cache
+        ic.client = self.client
+        return ic
 
-        isolation = isolation or self.transaction_config.isolation
-        concurrency = concurrency or self.transaction_config.concurrency
+    def _begin_transaction(self, **kwargs) -> None:
+        pass
 
-        self.transaction = self.client.transactions().start(
-            concurrency=concurrency, isolation=isolation
-        )
+    def _commit_transaction(self, **kwargs) -> None:
+        if self.tx:
+            self.tx.commit()
+            self.tx.close()
+            self.tx = None
 
-    def _commit_transaction(self) -> None:
-        if self.transaction:
-            self.transaction.commit()
-            self.transaction = None
-
-    def _rollback_transaction(self) -> None:
-        if self.transaction:
-            self.transaction.rollback()
-            self.transaction = None
+    def _rollback_transaction(self, **kwargs) -> None:
+        if self.tx:
+            self.tx.rollback()
+            self.tx.close()
+            self.tx = None
 
     def close(self):
         """Close the Ignite client connection"""

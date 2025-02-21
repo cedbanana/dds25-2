@@ -63,6 +63,23 @@ def add_item(order_id: str, item_id: str, quantity: int):
     return Response(f"Item {item_id} added. Total: {order.total_cost}", status=200)
 
 
+### TODO: BIIIIIIIIIIG TODO Here to actually implement proper distributed
+### ACID transactions. This is the only place we need them.
+###
+### Oh and, here is a small list of other things we could add (overengineering):
+### 1. Caching of item ids, stock ids and usernames in redis so that we don't have to ask the microservice every-time
+### 2. I have reason to believe the load-balancing works pretty well, but it should be double checked
+### 3. I am certain some endpoints don't use the optimal operations and transaction settings in Ignite. We need to read the docs, go over
+###    the code and optimize accordingly
+### 4. Let's get some logging and dashboards going with Grafana and Prometheus???
+### 5. We need to extensively test the performance/consistency. Imo we can do the following
+###       - More locust stress testing, we could write our own profiles
+###       - After we connect up grafana and prometheus, we can add a connector to measure
+###         the total money and items over time, so that we can track it over time (awesome benchmark for consistency)
+### 6. KUBERNETES!!!
+### 7. Idk we will come up with something if we get bored
+
+
 def revert_items(items):
     for item_id, qty in items.items():
         try:

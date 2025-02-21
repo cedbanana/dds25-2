@@ -28,8 +28,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 return common_pb2.OperationResponse(
                     success=False, error=f"Item: {request.item_id} not found!"
                 )
-            stock_model.stock += request.quantity
-            db.save(stock_model)
+            db.increment(request.item_id, "stock", request.quantity)
             logging.info(
                 "Added %s to item %s; new stock: %s",
                 request.quantity,
@@ -60,6 +59,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                         success=False, error="Insufficient stock"
                     )
 
+                logging.error("Decrementing stock for item: %s", request.item_id)
                 transaction.decrement(item_id, "stock", request.quantity)
 
                 logging.info(

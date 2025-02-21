@@ -67,7 +67,7 @@ def find_user(user_id: str):
     return jsonify({"user_id": user_entry.id, "credit": user_entry.credit})
 
 
-@payment_blueprint.post("/add_funds/<user_id>/<amount>")
+@payment_blueprint.post("/add_funds/<user_id>/<int:amount>")
 def add_credit(user_id: str, amount: int):
     user_entry = get_user_from_db(user_id)
     try:

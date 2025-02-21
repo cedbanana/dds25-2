@@ -1,6 +1,6 @@
 version: "3"
 services:
-
+  # Traefik configuration remains the same
   traefik:
     image: traefik:v2.5
     command:
@@ -26,8 +26,13 @@ services:
     command: gunicorn -b 0.0.0.0:5000 -w 2 --timeout 30 --log-level=info app:app
     env_file:
       - env/order_redis.env
+    environment: &dbenv
+      DB_TYPE: ignite
     depends_on:
-      - order-db
+      - ignite
+      - redis
+      - stock-service
+      - payment-service
     deploy:
       replicas: 1
     labels:
@@ -37,10 +42,6 @@ services:
       - "traefik.http.routers.order.middlewares=order-stripprefix"
       - "traefik.http.services.order.loadbalancer.server.port=5000"
 
-  order-db:
-    image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 512mb
-
   stock-service:
     build:
       context: .
@@ -49,8 +50,10 @@ services:
     command: gunicorn -b 0.0.0.0:5000 -w 2 --timeout 30 --log-level=info app:app
     env_file:
       - env/stock_redis.env
+    environment: *dbenv
     depends_on:
-      - stock-db
+      - ignite
+      - redis
     deploy:
       replicas: 1
     labels:
@@ -60,20 +63,18 @@ services:
       - "traefik.http.routers.stock.middlewares=stock-stripprefix"
       - "traefik.http.services.stock.loadbalancer.server.port=5000"
 
-  stock-db:
-    image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 512mb
-
   payment-service:
     build:
       context: .
       dockerfile: Dockerfile.payment
-    image: user:latest
+    image: payment:latest
     command: gunicorn -b 0.0.0.0:5000 -w 2 --timeout 30 --log-level=info app:app
     env_file:
       - env/payment_redis.env
+    environment: *dbenv
     depends_on:
-      - payment-db
+      - ignite
+      - redis
     deploy:
       replicas: 1
     labels:
@@ -83,16 +84,21 @@ services:
       - "traefik.http.routers.payment.middlewares=payment-stripprefix"
       - "traefik.http.services.payment.loadbalancer.server.port=5000"
 
-  payment-db:
+  redis:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 512mb
-
-  dev_redis:
-    image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 512mb
+    command: redis-server --requirepass redis --maxmemory 1024mb
     networks:
+      default:
       devnet_dds:
         ipv4_address: 172.172.69.10
+
+  ignite:
+    image: apacheignite/ignite:2.14.0
+    container_name: ignite
+    networks:
+      default:
+      devnet_dds:
+        ipv4_address: 172.172.69.11
 
 networks:
   devnet_dds:
