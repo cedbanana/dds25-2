@@ -9,6 +9,8 @@ service StockService {
   // Return OperationResponse to include a possible error message.
   rpc AddStock(StockAdjustment) returns (common.OperationResponse);
   rpc RemoveStock(StockAdjustment) returns (common.OperationResponse);
+  rpc BulkOrder(BulkStockAdjustment) returns (BulkStockAdjustmentResponse);
+  rpc BulkRefund(BulkStockAdjustment) returns (common.OperationResponse);
 }
 
 message Item {
