@@ -8,7 +8,7 @@ service StockService {
   rpc FindItem(ItemRequest) returns (Item);
   // Return OperationResponse to include a possible error message.
   rpc AddStock(StockAdjustment) returns (common.OperationResponse);
-  rpc RemoveStock(StockAdjustment) returns (common.OperationResponse);
+  rpc RemoveStock(StockAdjustment) returns (StockAdjustmentResponse);
   rpc BulkOrder(BulkStockAdjustment) returns (BulkStockAdjustmentResponse);
   rpc BulkRefund(BulkStockAdjustment) returns (BulkStockAdjustmentResponse);
 }
@@ -36,12 +36,17 @@ message StockAdjustment {
   int32 quantity = 2;
 }
 
+message StockAdjustmentResponse {
+  common.OperationResponse status = 1;
+  int32 price = 2;
+}
+
 
 message BulkStockAdjustment {
   repeated Item items = 1;
 }
 
 message BulkStockAdjustmentResponse {
-  common.OperationResponse response = 1;
+  common.OperationResponse status = 1;
   int32 total_cost = 2;
 }

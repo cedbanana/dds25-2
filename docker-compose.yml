@@ -7,7 +7,8 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:8000"
-      - "--api.dashboard=true"
+      - "--api.dashboard=false"
+      - "--serversTransport.maxIdleConnsPerHost=30000"
     ports:
       - "8000:8000"
       - "8080:8080"
@@ -17,6 +18,10 @@ services:
       - order-service
       - stock-service
       - payment-service
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
 
   order-service:
     build:
@@ -27,14 +32,16 @@ services:
     env_file:
       - env/order_redis.env
     environment: &dbenv
-      DB_TYPE: ignite
+      DB_TYPE: redis
+      PROFILING: false
     depends_on:
-      - ignite
-      - redis
+      - redis-order
       - stock-service
       - payment-service
     deploy:
       replicas: 1
+    volumes:
+      - './order/profiles:/home/flask-app/profiles'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.order.rule=PathPrefix(`/orders/`)"
@@ -52,10 +59,11 @@ services:
       - env/stock_redis.env
     environment: *dbenv
     depends_on:
-      - ignite
-      - redis
+      - redis-stock
     deploy:
       replicas: 1
+    volumes:
+      - './stock/profiles:/home/flask-app/profiles'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.stock.rule=PathPrefix(`/stock/`)"
@@ -73,8 +81,9 @@ services:
       - env/payment_redis.env
     environment: *dbenv
     depends_on:
-      - ignite
-      - redis
+      - redis-payment
+    volumes:
+      - './payment/profiles:/home/flask-app/profiles'
     deploy:
       replicas: 1
     labels:
@@ -85,13 +94,21 @@ services:
       - "traefik.http.services.payment.loadbalancer.server.port=5000"
 
   ## Database Solutions
-  redis:
+  redis-payment:
     image: redis:7.2-bookworm
     command: redis-server --requirepass redis --maxmemory 1024mb
     networks:
       default:
       devnet_dds:
         ipv4_address: 172.172.69.10
+
+  redis-order:
+    image: redis:7.2-bookworm
+    command: redis-server --requirepass redis --maxmemory 1024mb
+
+  redis-stock:
+    image: redis:7.2-bookworm
+    command: redis-server --requirepass redis --maxmemory 1024mb
 
   ignite:
     image: apacheignite/ignite:2.14.0

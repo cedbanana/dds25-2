@@ -11,6 +11,7 @@ import logging
 import threading
 from flask import Flask, request
 from prometheus_flask_exporter import PrometheusMetrics  # New import
+from werkzeug.middleware.profiler import ProfilerMiddleware
 from metrics import REQUEST_COUNT, REQUEST_LATENCY, REQUEST_IN_PROGRESS
 
 from service import payment_blueprint
@@ -22,6 +23,9 @@ app = Flask("payment-service")
 metrics = PrometheusMetrics(app)
 
 app.register_blueprint(payment_blueprint)
+app.wsgi_app = ProfilerMiddleware(
+    app.wsgi_app, profile_dir="profiles/flask", stream=None
+)
 
 @app.before_request
 def before_request():

@@ -22,7 +22,7 @@ def get_item_from_db(id: str, db=db) -> Stock:
 
 def get_item_field_from_db(id: str, field: str, db=db) -> Stock:
     try:
-        value = db.get_attribute(id, field, Stock)
+        value = db.get_attr(id, field, Stock)
         if value is None:
             current_app.logger.error("Item not found: %s", id)
             abort(400, f"Item: {id} not found!")

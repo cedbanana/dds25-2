@@ -26,6 +26,9 @@ else:
         list(map(hosttotup, os.environ["IGNITE_HOSTS"].split(","))), model_class=Order
     )
 
+
+PROFILING = os.environ.get("PROFILING", "false") == "true"
+
 cache = RedisClient(
     host=os.environ["REDIS_HOST"],
     port=int(os.environ["REDIS_PORT"]),
