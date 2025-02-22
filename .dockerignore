@@ -1,3 +1,2 @@
 profiles/*
-!*/profiles/flask/
 profiles/flask/*
