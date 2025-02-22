@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 
 # Add common to path if it is not already there
 if not os.path.isdir("common"):
@@ -7,13 +8,13 @@ if not os.path.isdir("common"):
 
 import atexit
 import logging
-from flask import Flask
+from flask import Flask, request
 from config import db, payment_channel, stock_channel
 from service import order_blueprint
 
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.profiler import ProfilerMiddleware
-
+from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
 
 app = Flask("order-service")
 app.register_blueprint(order_blueprint)
@@ -21,6 +22,19 @@ app.register_blueprint(order_blueprint)
 app.wsgi_app = ProfilerMiddleware(
     app.wsgi_app, profile_dir="profiles/flask", stream=None
 )
+
+@app.before_request
+def before_request():
+    request.start_time = time.time()
+    REQUEST_IN_PROGRESS.labels(method=request.method, path=request.path).inc()
+
+@app.after_request
+def after_request(response):
+    request_latency = time.time() - request.start_time
+    REQUEST_COUNT.labels(method=request.method, status=response.status_code, path=request.path).inc()
+    REQUEST_LATENCY.labels(method=request.method, status=response.status_code, path=request.path).observe(request_latency)
+    REQUEST_IN_PROGRESS.labels(method=request.method, path=request.path).dec()
+    return response
 
 
 @atexit.register

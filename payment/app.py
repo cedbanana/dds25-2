@@ -12,7 +12,7 @@ import threading
 from flask import Flask, request
 from prometheus_flask_exporter import PrometheusMetrics  # New import
 from werkzeug.middleware.profiler import ProfilerMiddleware
-from metrics import REQUEST_COUNT, REQUEST_LATENCY, REQUEST_IN_PROGRESS
+from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
 
 from service import payment_blueprint
 from config import db
