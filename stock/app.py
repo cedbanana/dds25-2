@@ -14,7 +14,7 @@ from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.profiler import ProfilerMiddleware
 
 from service import stock_blueprint
-from config import db
+from config import db, PROFILING
 from rpc import grpc_server
 from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
 
@@ -22,7 +22,9 @@ app = Flask("stock-service")
 
 
 app.register_blueprint(stock_blueprint)
-app.wsgi_app = ProfilerMiddleware(
+
+if PROFILING:
+    app.wsgi_app = ProfilerMiddleware(
     app.wsgi_app, profile_dir="profiles/flask", stream=None
 )
 
