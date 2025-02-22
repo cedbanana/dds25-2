@@ -9,7 +9,7 @@ if not os.path.isdir("common"):
 import atexit
 import logging
 from flask import Flask, request
-from config import db, payment_channel, stock_channel
+from config import db, payment_channel, stock_channel, PROFILING
 from service import order_blueprint
 
 from prometheus_flask_exporter import PrometheusMetrics
@@ -19,7 +19,8 @@ from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
 app = Flask("order-service")
 app.register_blueprint(order_blueprint)
 
-app.wsgi_app = ProfilerMiddleware(
+if PROFILING:
+    app.wsgi_app = ProfilerMiddleware(
     app.wsgi_app, profile_dir="profiles/flask", stream=None
 )
 
