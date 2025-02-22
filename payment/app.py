@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 # Add common to path if it is not already there
 if not os.path.isdir("common"):
@@ -8,8 +9,9 @@ if not os.path.isdir("common"):
 import atexit
 import logging
 import threading
-from flask import Flask
+from flask import Flask, request
 from prometheus_flask_exporter import PrometheusMetrics  # New import
+from metrics import REQUEST_COUNT, REQUEST_LATENCY, REQUEST_IN_PROGRESS
 
 from service import payment_blueprint
 from config import db
@@ -20,6 +22,19 @@ app = Flask("payment-service")
 metrics = PrometheusMetrics(app)
 
 app.register_blueprint(payment_blueprint)
+
+@app.before_request
+def before_request():
+    request.start_time = time.time()
+    REQUEST_IN_PROGRESS.labels(method=request.method, path=request.path).inc()
+
+@app.after_request
+def after_request(response):
+    request_latency = time.time() - request.start_time
+    REQUEST_COUNT.labels(method=request.method, status=response.status_code, path=request.path).inc()
+    REQUEST_LATENCY.labels(method=request.method, status=response.status_code, path=request.path).observe(request_latency)
+    REQUEST_IN_PROGRESS.labels(method=request.method, path=request.path).dec()
+    return response
 
 
 @atexit.register
