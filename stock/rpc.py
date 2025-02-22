@@ -27,8 +27,11 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         try:
             stock_model = db.get(request.item_id, Stock)
             if stock_model is None:
-                return common_pb2.OperationResponse(
-                    success=False, error=f"Item: {request.item_id} not found!"
+                return stock_pb2.StockAdjustmentResponse(
+                    status=common_pb2.OperationResponse(
+                        success=False, error=f"Item: {request.item_id} not found!"
+                    ),
+                    price=-1,
                 )
             db.increment(request.item_id, "stock", request.quantity)
             logging.info(
@@ -37,7 +40,10 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 request.item_id,
                 stock_model.stock,
             )
-            return common_pb2.OperationResponse(success=True)
+            return stock_pb2.StockAdjustmentResponse(
+                status=common_pb2.OperationResponse(success=True),
+                price=stock_model.price * request.quantity,
+            )
         except Exception as e:
             logging.exception("Error in AddStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
@@ -48,8 +54,11 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
             if not db.lte_decrement(item_id, "stock", request.quantity):
                 logging.error("Insufficient stock for item: %s", request.item_id)
-                return common_pb2.OperationResponse(
-                    success=False, error="Insufficient stock"
+                return stock_pb2.StockAdjustmentResponse(
+                    status=common_pb2.OperationResponse(
+                        success=False, error="Insufficient stock"
+                    ),
+                    price=-1,
                 )
 
             logging.info(
@@ -57,7 +66,13 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 request.quantity,
                 request.item_id,
             )
-            return common_pb2.OperationResponse(success=True)
+
+            price = db.get_attr(item_id, "price", Stock)
+
+            return stock_pb2.StockAdjustmentResponse(
+                status=common_pb2.OperationResponse(success=True),
+                price=price * request.quantity,
+            )
         except Exception as e:
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
@@ -70,7 +85,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             prices = db.m_get_attr([item.id for item in items], "price", Stock)
             if prices is None:
                 return stock_pb2.BulkStockAdjustmentResponse(
-                    response=common_pb2.OperationResponse(
+                    status=common_pb2.OperationResponse(
                         success=False, error="Item not found!"
                     ),
                     total_cost=-1,
@@ -78,19 +93,17 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
             cost = sum([prices[item.id] * item.stock for item in items])
 
-            logging.error("%s, %s", prices, cost)
-
             if not db.m_lte_decrement({item.id: item.stock for item in items}, "stock"):
                 logging.error("Insufficient stock for items")
                 return stock_pb2.BulkStockAdjustmentResponse(
-                    response=common_pb2.OperationResponse(
+                    status=common_pb2.OperationResponse(
                         success=False, error="Insufficient stock for some items"
                     ),
                     total_cost=-1,
                 )
 
             return stock_pb2.BulkStockAdjustmentResponse(
-                response=common_pb2.OperationResponse(success=True), total_cost=cost
+                status=common_pb2.OperationResponse(success=True), total_cost=cost
             )
         except Exception as e:
             logging.exception("Error in RemoveStock")
@@ -105,7 +118,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 stock_model = db.get(item.id, Stock)
                 if stock_model is None:
                     return stock_pb2.BulkStockAdjustmentResponse(
-                        response=common_pb2.OperationResponse(
+                        status=common_pb2.OperationResponse(
                             success=False, error=f"Item: {item.id} not found!"
                         ),
                         total_cost=-1,
@@ -121,7 +134,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 )
 
             return stock_pb2.BulkStockAdjustmentResponse(
-                response=common_pb2.OperationResponse(success=True), total_cost=-1
+                status=common_pb2.OperationResponse(success=True), total_cost=-1
             )
         except Exception as e:
             logging.exception("Error in RemoveStock")

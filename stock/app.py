@@ -9,7 +9,8 @@ import atexit
 import logging
 import threading
 from flask import Flask
-from prometheus_flask_exporter import PrometheusMetrics  # New import
+from prometheus_flask_exporter import PrometheusMetrics
+from werkzeug.middleware.profiler import ProfilerMiddleware
 
 from service import stock_blueprint
 from config import db
@@ -19,6 +20,9 @@ app = Flask("stock-service")
 
 
 app.register_blueprint(stock_blueprint)
+app.wsgi_app = ProfilerMiddleware(
+    app.wsgi_app, profile_dir="profiles/flask", stream=None
+)
 
 
 @atexit.register

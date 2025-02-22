@@ -59,6 +59,16 @@ end
 return -1
 """
 
+COMPARE_AND_SET_SCRIPT = """
+local current = redis.call('get', KEYS[1])
+if current == ARGV[1] then
+    redis.call('set', KEYS[1], ARGV[2])
+    return 1
+else
+    return 0
+end
+"""
+
 
 class RedisClient(DatabaseClient[T]):
     def __init__(
@@ -82,10 +92,12 @@ class RedisClient(DatabaseClient[T]):
 
     def _register_scripts(self):
         """Register all Lua scripts and store their SHA1 digests"""
-        # Only register scripts if we're not in a pipeline
         if hasattr(self, "redis"):
             self._lte_decrement = self.redis.register_script(LTE_DECREMENT_SCRIPT)
             self._m_lte_decrement = self.redis.register_script(M_LTE_DECREMENT_SCRIPT)
+            self._compare_and_set_script = self.redis.register_script(
+                COMPARE_AND_SET_SCRIPT
+            )
 
     def _get_client(self):
         return self.pipeline if self.pipeline is not None else self.redis
@@ -105,7 +117,7 @@ class RedisClient(DatabaseClient[T]):
     def get(self, id: str, model_class: Type[T]) -> Optional[T]:
         client = self._get_client()
 
-        keys = self.redis.keys(self._get_model_keys_pattern(id))
+        keys = [self._get_key(id, field.name) for field in fields(model_class)]
         if not keys:
             return None
 
@@ -266,7 +278,7 @@ class RedisClient(DatabaseClient[T]):
 
         for k, v in changes.items():
             keys.append(self._get_key(k, attribute))
-            values.append(str(v))
+            values.append(v)
 
         try:
             if self.pipeline is None:
@@ -288,7 +300,7 @@ class RedisClient(DatabaseClient[T]):
                     self.M_LTE_DECREMENT_SCRIPT, len(keys), *(keys + values)
                 )
 
-        return result == -1
+        return result != -1
 
     def increment(self, id: str, attribute: str, amount: int = 1) -> int:
         self._prepare_for_changes()
@@ -310,35 +322,33 @@ class RedisClient(DatabaseClient[T]):
         self, id: str, attribute: str, expected_value: Any, new_value: Any
     ) -> bool:
         key = self._get_key(id, attribute)
-        with self.redis.pipeline() as pipe:
-            while True:
-                try:
-                    # Watch the key for changes
-                    pipe.watch(key)
+        client = self._get_client()
 
-                    # Get current value
-                    current_value = pipe.get(key)
+        # Convert expected_value and new_value to strings for comparison
+        expected_str = str(expected_value)
+        new_str = str(new_value)
 
-                    # Convert values to strings for comparison
-                    expected_str = str(expected_value)
+        try:
+            if self.pipeline is None:
+                result = self._compare_and_set_script(
+                    keys=[key], args=[expected_str, new_str]
+                )
+            else:
+                result = client.eval(
+                    COMPARE_AND_SET_SCRIPT, 1, key, expected_str, new_str
+                )
+        except redis.exceptions.NoScriptError:
+            if self.pipeline is None:
+                self._register_scripts()
+                result = self._compare_and_set_script(
+                    keys=[key], args=[expected_str, new_str]
+                )
+            else:
+                result = client.eval(
+                    COMPARE_AND_SET_SCRIPT, 1, key, expected_str, new_str
+                )
 
-                    if current_value != expected_str:
-                        pipe.unwatch()
-                        return False
-
-                    # Start transaction
-                    pipe.multi()
-
-                    # Set new value
-                    pipe.set(key, str(new_value))
-
-                    # Execute transaction
-                    pipe.execute()
-                    return True
-
-                except redis.WatchError:
-                    # Another client modified the key while we were working
-                    continue
+        return result == 1
 
     def close(self):
         """Close the Redis client connection"""

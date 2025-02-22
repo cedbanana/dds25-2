@@ -24,6 +24,18 @@ def get_order_from_db(order_id: str) -> Order:
         abort(400, DB_ERROR_STR)
 
 
+def get_order_field_from_db(order_id: str, field: str) -> Order:
+    try:
+        order = db.get_attr(order_id, field, Order)
+        if order is None:
+            current_app.logger.error("Order not found: %s", order_id)
+            abort(400, f"Order: {order_id} not found!")
+        return order
+    except Exception as e:
+        current_app.logger.exception("Failed to get order: %s", order_id)
+        abort(400, DB_ERROR_STR)
+
+
 @order_blueprint.post("/create/<user_id>")
 def create_order(user_id: str):
     order_id = str(uuid.uuid4())
@@ -39,7 +51,7 @@ def create_order(user_id: str):
 
 @order_blueprint.post("/addItem/<order_id>/<item_id>/<quantity>")
 def add_item(order_id: str, item_id: str, quantity: int):
-    order = get_order_from_db(order_id)
+    items = get_order_field_from_db(order_id, "items")
     try:
         # Call the Stock service (gRPC client) to get item details.
         item_response = stock_client.FindItem(ItemRequest(item_id=item_id))
@@ -51,18 +63,17 @@ def add_item(order_id: str, item_id: str, quantity: int):
         abort(400, f"Item {item_id} not found")
 
     # Append a tuple (item_id, quantity) to the order.
-    order.items.append(f"{item_id}:{int(quantity)}")
-    order.total_cost += int(quantity) * item_response.price
+    items.append(f"{item_id}:{int(quantity)}")
 
     try:
-        db.save(order)
+        db.set_attr(order_id, "items", items, Order)
         current_app.logger.info(
             "Added item %s (qty %s) to order %s", item_id, quantity, order_id
         )
     except Exception as e:
         current_app.logger.exception("Failed to update order: %s", order_id)
         abort(400, DB_ERROR_STR)
-    return Response(f"Item {item_id} added. Total: {order.total_cost}", status=200)
+    return Response(f"Item {item_id} added. Total item count: {len(items)}", status=200)
 
 
 @order_blueprint.post("/batch_init/<n>/<n_items>/<n_users>/<item_price>")
@@ -145,6 +156,12 @@ def checkout_bulk(order_id: str):
             )
             abort(400, "Error communicating with stock service")
 
+    unpaid = db.compare_and_set(order_id, "paid", False, True)
+
+    if not unpaid:
+        current_app.logger.error("Order already paid: %s", order_id)
+        abort(400, f"Order {order_id} already paid")
+
     order = get_order_from_db(order_id)
     items = defaultdict(int)
 
@@ -163,13 +180,15 @@ def checkout_bulk(order_id: str):
         )
     except Exception as e:
         current_app.logger.exception("Error calling RemoveStock for item %s", item_id)
+        db.set_attr(order_id, "paid", False, Order)
         abort(400, "Error communicating with stock service")
 
-    if not stock_response.response.success:
-        err_msg = stock_response.response.error or f"Insufficient stock for {item_id}"
+    if not stock_response.status.success:
+        err_msg = stock_response.status.error or f"Insufficient stock for {item_id}"
         current_app.logger.error(
             "Stock deduction failed for item %s: %s", item_id, err_msg
         )
+        db.set_attr(order_id, "paid", False, Order)
         abort(400, err_msg)
     else:
         order.total_cost = stock_response.total_cost
@@ -186,11 +205,13 @@ def checkout_bulk(order_id: str):
             "Error calling ProcessPayment for user %s", order.user_id
         )
         revert_items(deducted_items)
+        db.set_attr(order_id, "paid", False, Order)
         abort(400, "Error communicating with payment service")
     if not payment_response.success:
         err_msg = payment_response.error or "Payment failed"
         current_app.logger.error("Payment failed for order %s: %s", order_id, err_msg)
         revert_items(deducted_items)
+        db.set_attr(order_id, "paid", False, Order)
         abort(400, err_msg)
 
     order.paid = True
@@ -220,6 +241,7 @@ def checkout_individual(order_id: str):
             current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
 
     order = get_order_from_db(order_id)
+    order.total_cost = 0
     items = defaultdict(int)
 
     for item in order.items:
@@ -240,8 +262,8 @@ def checkout_individual(order_id: str):
             )
             revert_items(deducted_items)
             abort(400, "Error communicating with stock service")
-        if not stock_response.success:
-            err_msg = stock_response.error or f"Insufficient stock for {item_id}"
+        if not stock_response.status.success:
+            err_msg = stock_response.status.error or f"Insufficient stock for {item_id}"
             current_app.logger.error(
                 "Stock deduction failed for item %s: %s", item_id, err_msg
             )
@@ -249,6 +271,7 @@ def checkout_individual(order_id: str):
             abort(400, err_msg)
         else:
             deducted_items[item_id] = total_qty
+            order.total_cost += stock_response.price
 
     # Process payment.
     try:

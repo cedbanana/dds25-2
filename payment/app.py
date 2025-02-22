@@ -9,7 +9,8 @@ import atexit
 import logging
 import threading
 from flask import Flask
-from prometheus_flask_exporter import PrometheusMetrics  # New import
+from prometheus_flask_exporter import PrometheusMetrics
+from werkzeug.middleware.profiler import ProfilerMiddleware
 
 from service import payment_blueprint
 from config import db
@@ -20,6 +21,9 @@ app = Flask("payment-service")
 metrics = PrometheusMetrics(app)
 
 app.register_blueprint(payment_blueprint)
+app.wsgi_app = ProfilerMiddleware(
+    app.wsgi_app, profile_dir="profiles/flask", stream=None
+)
 
 
 @atexit.register

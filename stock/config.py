@@ -20,3 +20,6 @@ else:
     db = IgniteClient(
         list(map(hosttotup, os.environ["IGNITE_HOSTS"].split(","))), model_class=Stock
     )
+
+
+PROFILING = os.environ.get("PROFILING", "false") == "true"

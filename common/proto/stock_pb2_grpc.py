@@ -48,7 +48,7 @@ class StockServiceStub(object):
         self.RemoveStock = channel.unary_unary(
                 '/stock.StockService/RemoveStock',
                 request_serializer=proto_dot_stock__pb2.StockAdjustment.SerializeToString,
-                response_deserializer=proto_dot_common__pb2.OperationResponse.FromString,
+                response_deserializer=proto_dot_stock__pb2.StockAdjustmentResponse.FromString,
                 _registered_method=True)
         self.BulkOrder = channel.unary_unary(
                 '/stock.StockService/BulkOrder',
@@ -112,7 +112,7 @@ def add_StockServiceServicer_to_server(servicer, server):
             'RemoveStock': grpc.unary_unary_rpc_method_handler(
                     servicer.RemoveStock,
                     request_deserializer=proto_dot_stock__pb2.StockAdjustment.FromString,
-                    response_serializer=proto_dot_common__pb2.OperationResponse.SerializeToString,
+                    response_serializer=proto_dot_stock__pb2.StockAdjustmentResponse.SerializeToString,
             ),
             'BulkOrder': grpc.unary_unary_rpc_method_handler(
                     servicer.BulkOrder,
@@ -205,7 +205,7 @@ class StockService(object):
             target,
             '/stock.StockService/RemoveStock',
             proto_dot_stock__pb2.StockAdjustment.SerializeToString,
-            proto_dot_common__pb2.OperationResponse.FromString,
+            proto_dot_stock__pb2.StockAdjustmentResponse.FromString,
             options,
             channel_credentials,
             insecure,

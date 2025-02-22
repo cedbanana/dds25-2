@@ -11,11 +11,16 @@ from flask import Flask
 from config import db, payment_channel, stock_channel
 from service import order_blueprint
 
-from prometheus_flask_exporter import PrometheusMetrics  # New import
+from prometheus_flask_exporter import PrometheusMetrics
+from werkzeug.middleware.profiler import ProfilerMiddleware
 
 
 app = Flask("order-service")
 app.register_blueprint(order_blueprint)
+
+app.wsgi_app = ProfilerMiddleware(
+    app.wsgi_app, profile_dir="profiles/flask", stream=None
+)
 
 
 @atexit.register
