@@ -46,39 +46,18 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         try:
             item_id = request.item_id
 
-            with db.transaction(
-                TransactionConfig(
-                    init={
-                        "isolation": TransactionIsolation.SERIALIZABLE,
-                        "concurrency": TransactionConcurrency.PESSIMISTIC,
-                    },
-                    begin={"watch": [(item_id, "stock")]},
-                )
-            ) as transaction:
-                stock = transaction.get_attribute(item_id, "stock", Stock)
-                if stock is None:
-                    return common_pb2.OperationResponse(
-                        success=False, error=f"Item: {request.item_id} not found!"
-                    )
-                # Instead of aborting here, return an error message if not enough stock.
-                if stock < request.quantity:
-                    logging.error("Insufficient stock for item: %s", request.item_id)
-                    return common_pb2.OperationResponse(
-                        success=False, error="Insufficient stock"
-                    )
-
-                logging.error("Decrementing stock for item: %s", request.item_id)
-                transaction.set_attribute(
-                    item_id, "stock", int(stock - request.quantity), Stock
+            if not db.lte_decrement(item_id, "stock", request.quantity):
+                logging.error("Insufficient stock for item: %s", request.item_id)
+                return common_pb2.OperationResponse(
+                    success=False, error="Insufficient stock"
                 )
 
-                logging.info(
-                    "Removed %s from item %s; new stock: %s",
-                    request.quantity,
-                    request.item_id,
-                    stock - request.quantity,
-                )
-                return common_pb2.OperationResponse(success=True)
+            logging.info(
+                "Removed %s from item %s.",
+                request.quantity,
+                request.item_id,
+            )
+            return common_pb2.OperationResponse(success=True)
         except Exception as e:
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
@@ -86,69 +65,33 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
     def BulkOrder(self, request, context):
         try:
             items = request.items
-            watch = [(item.id, "stock") for item in items]
             cost = 0
 
-            prices = {}
-
-            for item in items:
-                price = db.get_attribute(item.id, "price", Stock)
-                if price is None:
-                    return stock_pb2.BulkStockAdjustmentResponse(
-                        response=common_pb2.OperationResponse(
-                            success=False, error=f"Item: {item.id} not found!"
-                        ),
-                        total_cost=-1,
-                    )
-
-                prices[item.id] = price
-
-            with db.transaction(
-                TransactionConfig(
-                    init={
-                        "isolation": TransactionIsolation.SERIALIZABLE,
-                        "concurrency": TransactionConcurrency.PESSIMISTIC,
-                    },
-                    begin={"watch": watch},
-                )
-            ) as transaction:
-                stocks = {}
-                for item in items:
-                    cost += prices[item.id] * item.stock
-                    # logging.error("Item: %s, Cost: %s", item.id, cost)
-                    stock = transaction.get_attribute(item.id, "stock", Stock)
-                    if stock < item.stock:
-                        logging.error("Insufficient stock for item: %s", item.id)
-                        return stock_pb2.BulkStockAdjustmentResponse(
-                            response=common_pb2.OperationResponse(
-                                success=False, error="Insufficient stock"
-                            ),
-                            total_cost=-1,
-                        )
-
-                    stocks[item.id] = stock
-
-                for item in items:
-                    stock = stocks[item.id]
-                    transaction.set_attribute(
-                        item.id, "stock", int(stock - item.stock), Stock
-                    )
-
-                    logging.error("Decrementing stock for item: %s", item.id)
-                    transaction.set_attribute(
-                        item.id, "stock", int(stock - item.stock), Stock
-                    )
-
-                    logging.info(
-                        "Removed %s from item %s; new stock: %s",
-                        item.stock,
-                        item.id,
-                        stock - item.stock,
-                    )
-
+            prices = db.m_get_attr([item.id for item in items], "price", Stock)
+            if prices is None:
                 return stock_pb2.BulkStockAdjustmentResponse(
-                    response=common_pb2.OperationResponse(success=True), total_cost=cost
+                    response=common_pb2.OperationResponse(
+                        success=False, error="Item not found!"
+                    ),
+                    total_cost=-1,
                 )
+
+            cost = sum([prices[item.id] * item.stock for item in items])
+
+            logging.error("%s, %s", prices, cost)
+
+            if not db.m_lte_decrement({item.id: item.stock for item in items}, "stock"):
+                logging.error("Insufficient stock for items")
+                return stock_pb2.BulkStockAdjustmentResponse(
+                    response=common_pb2.OperationResponse(
+                        success=False, error="Insufficient stock for some items"
+                    ),
+                    total_cost=-1,
+                )
+
+            return stock_pb2.BulkStockAdjustmentResponse(
+                response=common_pb2.OperationResponse(success=True), total_cost=cost
+            )
         except Exception as e:
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
@@ -157,40 +100,29 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         try:
             items = request.items
             watch = [(item.id, "stock") for item in items]
-            cost = 0
 
-            with db.transaction(
-                TransactionConfig(
-                    init={
-                        "isolation": TransactionIsolation.SERIALIZABLE,
-                        "concurrency": TransactionConcurrency.PESSIMISTIC,
-                    },
-                    begin={"watch": watch},
-                )
-            ) as transaction:
-                for item in items:
-                    stock_model = db.get(item.id, Stock)
-                    if stock_model is None:
-                        return stock_pb2.BulkStockAdjustmentResponse(
-                            response=common_pb2.OperationResponse(
-                                success=False, error=f"Item: {item.id} not found!"
-                            ),
-                            total_cost=-1,
-                        )
-                    stock_model.stock = transaction.increment(
-                        item.id, "stock", item.stock
+            for item in items:
+                stock_model = db.get(item.id, Stock)
+                if stock_model is None:
+                    return stock_pb2.BulkStockAdjustmentResponse(
+                        response=common_pb2.OperationResponse(
+                            success=False, error=f"Item: {item.id} not found!"
+                        ),
+                        total_cost=-1,
                     )
 
-                    logging.info(
-                        "Added %s to item %s; new stock: %s",
-                        item.stock,
-                        item.id,
-                        stock_model.stock,
-                    )
+                stock_model.stock = db.increment(item.id, "stock", item.stock)
 
-                return stock_pb2.BulkStockAdjustmentResponse(
-                    response=common_pb2.OperationResponse(success=True), total_cost=-1
+                logging.info(
+                    "Added %s to item %s; new stock: %s",
+                    item.stock,
+                    item.id,
+                    stock_model.stock,
                 )
+
+            return stock_pb2.BulkStockAdjustmentResponse(
+                response=common_pb2.OperationResponse(success=True), total_cost=-1
+            )
         except Exception as e:
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))

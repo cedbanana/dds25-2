@@ -1,5 +1,5 @@
 import logging
-from random import random
+import random
 import uuid
 from collections import defaultdict
 from flask import Blueprint, jsonify, abort, Response, current_app
@@ -85,8 +85,7 @@ def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str):
         current_app.logger.error("Invalid numeric parameters provided")
         abort(400, "All parameters must be valid integers")
 
-    def generate_order() -> Order:
-        order_id = str(uuid.uuid4())
+    def generate_order(order_id) -> Order:
         user_id = str(random.randint(0, n_users - 1))
 
         # Generate two random items with quantity 1
@@ -105,8 +104,8 @@ def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str):
         )
 
     # Generate and save all orders
-    for _ in range(n):
-        order = generate_order()
+    for i in range(n):
+        order = generate_order(str(i))
         try:
             db.save(order)
         except Exception as e:
@@ -197,7 +196,6 @@ def checkout_bulk(order_id: str):
     order.paid = True
     try:
         db.save(order)
-        current_app.logger.info("Checkout successful for order %s", order_id)
     except Exception as e:
         current_app.logger.exception(
             "Failed to update order after checkout: %s", order_id

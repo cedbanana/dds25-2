@@ -23,7 +23,7 @@ def get_user_from_db(user_id: str, db=db) -> User:
 
 def get_user_field_from_db(user_id: str, field: str, db=db) -> Any:
     try:
-        field = db.get_attribute(user_id, field, User)
+        field = db.get_attr(user_id, field, User)
         if field is None:
             current_app.logger.error("User not found: %s", user_id)
             abort(400, f"User: {user_id} not found!")

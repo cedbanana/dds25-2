@@ -34,32 +34,17 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
     def ProcessPayment(self, request, context):
         try:
             user_id = request.user_id
-            with db.transaction(
-                TransactionConfig(begin={"watch": [(user_id, "credit")]})
-            ) as transaction:
-                user_credit = transaction.get_attribute(user_id, "credit", User)
-                if user_credit is None:
-                    return payment_pb2.PaymentResponse(
-                        success=False, error=f"User: {request.user_id} not found!"
-                    )
-                if user_credit < request.amount:
-                    logging.error(
-                        "Payment failed for user %s: insufficient credit",
-                        request.user_id,
-                    )
-                    return payment_pb2.PaymentResponse(
-                        success=False, error="Insufficient funds"
-                    )
-                transaction.set_attribute(
-                    user_id, "credit", int(user_credit - request.amount), User
+
+            if not db.lte_decrement(user_id, "credit", request.amount):
+                logging.error(
+                    "Payment failed for user %s: insufficient credit",
+                    request.user_id,
+                )
+                return payment_pb2.PaymentResponse(
+                    success=False, error="Insufficient funds"
                 )
 
-                logging.info(
-                    "Processed payment for user %s; new credit: %s",
-                    request.user_id,
-                    user_credit - request.amount,
-                )
-                return payment_pb2.PaymentResponse(success=True)
+            return payment_pb2.PaymentResponse(success=True)
         except Exception as e:
             logging.exception("Error in ProcessPayment")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
