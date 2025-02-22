@@ -34,7 +34,7 @@ end
 return -1
 """
 
-M_LTE_DECREMENT_SCRIPT = """
+M_GTE_DECREMENT_SCRIPT = """
 local all_valid = true
 local values = {}
 
@@ -93,8 +93,8 @@ class RedisClient(DatabaseClient[T]):
     def _register_scripts(self):
         """Register all Lua scripts and store their SHA1 digests"""
         if hasattr(self, "redis"):
-            self._lte_decrement = self.redis.register_script(LTE_DECREMENT_SCRIPT)
-            self._m_lte_decrement = self.redis.register_script(M_LTE_DECREMENT_SCRIPT)
+            self._gte_decrement = self.redis.register_script(LTE_DECREMENT_SCRIPT)
+            self._m_gte_decrement = self.redis.register_script(M_GTE_DECREMENT_SCRIPT)
             self._compare_and_set_script = self.redis.register_script(
                 COMPARE_AND_SET_SCRIPT
             )
@@ -254,19 +254,19 @@ class RedisClient(DatabaseClient[T]):
 
         try:
             if self.pipeline is None:
-                result = self._lte_decrement(keys=[key], args=[amount])
+                result = self._gte_decrement(keys=[key], args=[amount])
             else:
                 result = client.eval(self.LTE_DECREMENT_SCRIPT, 1, key, amount)
         except redis.exceptions.NoScriptError:
             if self.pipeline is None:
                 self._register_scripts()
-                result = self._lte_decrement(keys=[key], args=[amount])
+                result = self._gte_decrement(keys=[key], args=[amount])
             else:
                 result = client.eval(self.LTE_DECREMENT_SCRIPT, 1, key, amount)
 
         return result != -1
 
-    def m_lte_decrement(self, changes: Dict[str, int], attribute: str) -> bool:
+    def m_gte_decrement(self, changes: Dict[str, int], attribute: str) -> bool:
         if not changes:
             return False
 
@@ -282,11 +282,11 @@ class RedisClient(DatabaseClient[T]):
 
         try:
             if self.pipeline is None:
-                result = self._m_lte_decrement(keys=keys, args=values)
+                result = self._m_gte_decrement(keys=keys, args=values)
             else:
                 # For pipelines, we need to use the original script
                 result = client.eval(
-                    self.M_LTE_DECREMENT_SCRIPT,
+                    self.M_GTE_DECREMENT_SCRIPT,
                     len(keys),
                     *(keys + values),
                 )
@@ -294,10 +294,10 @@ class RedisClient(DatabaseClient[T]):
             # If script is not found (e.g., Redis was restarted), reload and try again
             if self.pipeline is None:
                 self._register_scripts()
-                result = self._m_lte_decrement(keys=keys, args=values)
+                result = self._m_gte_decrement(keys=keys, args=values)
             else:
                 result = client.eval(
-                    self.M_LTE_DECREMENT_SCRIPT, len(keys), *(keys + values)
+                    self.M_GTE_DECREMENT_SCRIPT, len(keys), *(keys + values)
                 )
 
         return result != -1

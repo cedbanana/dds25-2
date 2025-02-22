@@ -39,7 +39,7 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 4
+      replicas: 1
     volumes:
       - './order/profiles:/home/flask-app/profiles'
     labels:
@@ -61,7 +61,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 4
+      replicas: 1
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
     labels:
@@ -85,7 +85,7 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 4
+      replicas: 1
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.payment.rule=PathPrefix(`/payment/`)"
@@ -110,13 +110,13 @@ services:
     image: redis:7.2-bookworm
     command: redis-server --requirepass redis --maxmemory 1024mb
 
-    #  ignite:
-    #    image: apacheignite/ignite:2.14.0
-    #    container_name: ignite
-    #    networks:
-    #      default:
-    #      devnet_dds:
-    #        ipv4_address: 172.172.69.11
+  ignite:
+    image: apacheignite/ignite:2.14.0
+    container_name: ignite
+    networks:
+      default:
+      devnet_dds:
+        ipv4_address: 172.172.69.11
 
   ## Monitoring Solutions
   prometheus:

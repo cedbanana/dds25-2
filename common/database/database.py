@@ -121,7 +121,7 @@ class DatabaseClient(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def m_lte_decrement(self, changes: Dict[str, int], attribute: str) -> bool:
+    def m_gte_decrement(self, changes: Dict[str, int], attribute: str) -> bool:
         pass
 
     @abstractmethod

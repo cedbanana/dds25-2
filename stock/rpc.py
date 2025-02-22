@@ -93,7 +93,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
             cost = sum([prices[item.id] * item.stock for item in items])
 
-            if not db.m_lte_decrement({item.id: item.stock for item in items}, "stock"):
+            if not db.m_gte_decrement({item.id: item.stock for item in items}, "stock"):
                 logging.error("Insufficient stock for items")
                 return stock_pb2.BulkStockAdjustmentResponse(
                     status=common_pb2.OperationResponse(
@@ -112,7 +112,6 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
     def BulkRefund(self, request, context):
         try:
             items = request.items
-            watch = [(item.id, "stock") for item in items]
 
             for item in items:
                 stock_model = db.get(item.id, Stock)

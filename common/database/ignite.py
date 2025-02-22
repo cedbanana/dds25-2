@@ -30,27 +30,35 @@ class IgniteClient(DatabaseClient[T]):
         hosts: list[tuple[str, int]] = [("127.0.0.1", 10800)],
         model_class: Type[T] = None,
         additional_conf: dict = {},
+        client: Client = None,
+        cache: Any = None,
     ):
         self.config = {
             "hosts": hosts,
             "model_class": model_class,
             "additional_conf": additional_conf,
         }
-        self.client = Client()
-        self.client.connect(hosts)
+        if client is None:
+            self.client = Client()
+            self.client.connect(hosts)
+        else:
+            self.client = client
+
+        if cache is None:
+            cache_conf = {
+                PROP_NAME: model_class.__name__
+                if model_class
+                else "model_cache_" + str(random.randint(1, 10000)),
+                PROP_CACHE_ATOMICITY_MODE: CacheAtomicityMode.TRANSACTIONAL,
+            }
+
+            cache_conf.update(additional_conf)
+
+            self.cache = self.client.get_or_create_cache(cache_conf)
+        else:
+            self.cache = cache
+
         self.tx = None
-
-        cache_conf = {
-            PROP_NAME: model_class.__name__
-            if model_class
-            else "model_cache_" + str(random.randint(1, 10000)),
-            PROP_CACHE_ATOMICITY_MODE: CacheAtomicityMode.TRANSACTIONAL,
-        }
-
-        cache_conf.update(additional_conf)
-
-        # Create cache for storing model attributes
-        self.cache = self.client.get_or_create_cache(cache_conf)
 
     def _value_hint(self, model_class: Type[T], field: str) -> str:
         field_type = model_class.__annotations__.get(field)
@@ -168,15 +176,15 @@ class IgniteClient(DatabaseClient[T]):
             val = self._simple_increment(id, attribute, amount)
             return val
 
-            with self.transaction(
-                TransactionConfig(
-                    init={
-                        "isolation": TransactionIsolation.SERIALIZABLE,
-                        "concurrency": TransactionConcurrency.PESSIMISTIC,
-                    }
-                )
-            ):
-                return self._simple_increment(id, attribute, amount)
+        with self.transaction(
+            TransactionConfig(
+                init={
+                    "isolation": TransactionIsolation.SERIALIZABLE,
+                    "concurrency": TransactionConcurrency.PESSIMISTIC,
+                }
+            )
+        ):
+            return self._simple_increment(id, attribute, amount)
 
     def decrement(self, id: str, attribute: str, amount: int = 1) -> int:
         return self.increment(id, attribute, -amount)
@@ -265,7 +273,7 @@ class IgniteClient(DatabaseClient[T]):
         if to_remove:
             self.cache.remove_all(to_remove)
 
-    def _lte_decrement_transaction(self, id: str, attribute: str, amount: int) -> bool:
+    def _gte_decrement_transaction(self, id: str, attribute: str, amount: int) -> bool:
         key = self._get_key(id, attribute)
         current = self.cache.get(key)
 
@@ -277,7 +285,7 @@ class IgniteClient(DatabaseClient[T]):
         except (ValueError, TypeError):
             return False
 
-        if current_int >= amount:
+        if amount <= current_int:
             new_value = current_int - amount
             self.cache.put(key, new_value, value_hint=itypes_primitive.IntObject)
             return True
@@ -286,7 +294,7 @@ class IgniteClient(DatabaseClient[T]):
 
     def lte_decrement(self, id: str, attribute: str, amount: int) -> bool:
         if self.tx is not None:
-            return self._lte_decrement_transaction(id, attribute, amount)
+            return self._gte_decrement_transaction(id, attribute, amount)
 
         with self.transaction(
             TransactionConfig(
@@ -296,9 +304,9 @@ class IgniteClient(DatabaseClient[T]):
                 }
             )
         ) as tx_client:
-            return tx_client._lte_decrement_transaction(id, attribute, amount)
+            return tx_client._gte_decrement_transaction(id, attribute, amount)
 
-    def _m_lte_decrement_transaction(
+    def _m_gte_decrement_transaction(
         self, changes: Dict[str, int], attribute: str
     ) -> bool:
         keys = {id: self._get_key(id, attribute) for id in changes}
@@ -327,13 +335,13 @@ class IgniteClient(DatabaseClient[T]):
         self.cache.put_all(updates)
         return True
 
-    def m_lte_decrement(self, changes: Dict[str, int], attribute: str) -> bool:
+    def m_gte_decrement(self, changes: Dict[str, int], attribute: str) -> bool:
         if not changes:
             return False
 
         # If already in a transaction, just perform the operation
         if self.tx is not None:
-            return self._m_lte_decrement_transaction(changes, attribute)
+            return self._m_gte_decrement_transaction(changes, attribute)
 
         # Otherwise, create a new transaction for this operation
         with self.transaction(
@@ -344,14 +352,14 @@ class IgniteClient(DatabaseClient[T]):
                 }
             )
         ) as tx_client:
-            return tx_client._m_lte_decrement_transaction(changes, attribute)
+            return tx_client._m_gte_decrement_transaction(changes, attribute)
 
     @contextmanager
     def transaction(
         self,
         config: TransactionConfig = TransactionConfig(),
     ):
-        txclient = IgniteClient(**self.config)
+        txclient = IgniteClient(client=None, cache=None, **self.config)
 
         try:
             with txclient.client.tx_start(
@@ -368,7 +376,8 @@ class IgniteClient(DatabaseClient[T]):
         except Exception as e:
             raise TransactionError(e)
         finally:
-            txclient.close()
+            if txclient.client != self.client:
+                txclient.close()
 
     def close(self):
         """Close the Ignite client connection"""
