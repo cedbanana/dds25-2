@@ -46,13 +46,14 @@ class Stock:
     id: str
     stock: int
     price: int
+    reserved: int
 
     def to_proto(self) -> stock_pb2.Item:
-        return stock_pb2.Item(id=self.id, stock=self.stock, price=self.price)
+        return stock_pb2.Item(id=self.id, stock=self.stock, price=self.price, reserved=self.reserved)
 
     @classmethod
     def from_proto(cls, proto: stock_pb2.Item) -> "Stock":
-        return cls(id=proto.id, stock=proto.stock, price=proto.price)
+        return cls(id=proto.id, stock=proto.stock, price=proto.price, reserved=proto.reserved)
 
 
 @dataclass
