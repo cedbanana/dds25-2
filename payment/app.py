@@ -19,10 +19,14 @@ from config import db, PROFILING
 from rpc import grpc_server
 
 app = Flask("payment-service")
+app.register_blueprint(payment_blueprint)
+
+from prometheus_client.core import REGISTRY
+from custom_collector import PaymentCollector
+REGISTRY.register(PaymentCollector())
 
 metrics = PrometheusMetrics(app)
 
-app.register_blueprint(payment_blueprint)
 if PROFILING:
     app.wsgi_app = ProfilerMiddleware(
     app.wsgi_app, profile_dir="profiles/flask", stream=None
@@ -59,3 +63,9 @@ else:
     gunicorn_logger = logging.getLogger("gunicorn.error")
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)
+    # app.logger.setLevel(logging.DEBUG)  # Set level to DEBUG to capture all logs
+    # handler = logging.StreamHandler(sys.stdout)
+    # handler.setLevel(logging.DEBUG)  # Log level to DEBUG to capture detailed logs
+    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # handler.setFormatter(formatter)
+    # app.logger.addHandler(handler)

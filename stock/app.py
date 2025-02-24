@@ -23,6 +23,10 @@ app = Flask("stock-service")
 
 app.register_blueprint(stock_blueprint)
 
+from prometheus_client.core import REGISTRY
+from custom_collector import AvailableStockCollector
+REGISTRY.register(AvailableStockCollector())
+
 if PROFILING:
     app.wsgi_app = ProfilerMiddleware(
     app.wsgi_app, profile_dir="profiles/flask", stream=None

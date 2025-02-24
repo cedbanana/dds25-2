@@ -19,6 +19,11 @@ from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
 app = Flask("order-service")
 app.register_blueprint(order_blueprint)
 
+from prometheus_client.core import REGISTRY
+from custom_collector import RevenueAndSoldStockCollector
+REGISTRY.register(RevenueAndSoldStockCollector())
+
+
 if PROFILING:
     app.wsgi_app = ProfilerMiddleware(
     app.wsgi_app, profile_dir="profiles/flask", stream=None

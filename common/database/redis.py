@@ -169,6 +169,13 @@ class RedisClient(DatabaseClient[T]):
         if self.pipeline is None:
             pipe.execute()
 
+    def keys(self, match: str = "*") -> List[str]:
+        client = self._get_client()
+        
+        keys = client.keys(match)  
+        
+        return keys
+
     def delete(self, id: str) -> bool:
         client = self._get_client()
         # Get all keys for this model
