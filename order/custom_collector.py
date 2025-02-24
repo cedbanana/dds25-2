@@ -36,8 +36,8 @@ class RevenueAndSoldStockCollector(Collector):
             logger.error(f"Error fetching orders or  costs: {e}")
         
 
-        logger.error(f"Aggregate of received monetary resources ($$$): {revenue}")
-        logger.error(f"Aggregate of successfully sold inventory resources ($$$): {sold_stock}")
+        logger.info(f"Aggregate of received monetary resources ($$$): {revenue}")
+        logger.info(f"Aggregate of successfully sold inventory resources ($$$): {sold_stock}")
         return revenue, sold_stock
 
 
@@ -47,10 +47,10 @@ class RevenueAndSoldStockCollector(Collector):
             order_keys = db.keys("model:*:paid")
             
             if not order_keys:
-                logger.error("No orders found!")
+                logger.info("No orders found!")
                 return []  
 
-            logger.error(f"Number of orders found: {len(order_keys)}")
+            logger.info(f"Number of orders found: {len(order_keys)}")
 
             order_ids = [key.split(":")[1] for key in order_keys]
 

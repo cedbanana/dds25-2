@@ -23,7 +23,7 @@ class AvailableStockCollector(Collector):
             if not stock_keys:
                 return 0 
 
-            logger.error(f"Number of individual stock categories: {len(stock_keys)}")
+            logger.info(f"Number of individual stock categories: {len(stock_keys)}")
 
             stock_ids = [key.split(":")[1] for key in stock_keys]
 
@@ -46,5 +46,5 @@ class AvailableStockCollector(Collector):
             logger.error(f"Error fetching all stock keys: {e}")
             return 0
 
-        logger.error(f"Total stock remaining: {total_stock}")
+        logger.info(f"Total stock remaining: {total_stock}")
         return total_stock

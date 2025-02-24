@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class PaymentCollector(Collector):
     def collect(self):
         total_credit = self.get_total_credit()
-        logger.error(f"Total credit calculated: {total_credit}")
+        logger.info(f"Total credit calculated: {total_credit}")
 
         credit_gauge = GaugeMetricFamily('total_user_credit', 'Total credit held by all users')
         credit_gauge.add_metric([], total_credit)
@@ -24,7 +24,7 @@ class PaymentCollector(Collector):
             if not user_keys:
                 return 0 
 
-            logger.error(f"Number of users found: {len(user_keys)}")
+            logger.info(f"Number of users found: {len(user_keys)}")
 
             user_ids = [key.split(":")[1] for key in user_keys]
 
@@ -47,5 +47,5 @@ class PaymentCollector(Collector):
             logger.error(f"Error fetching all user keys: {e}")
             return 0
 
-        logger.error(f"Total credit across all users: {total_credit}")
+        logger.info(f"Total credit across all users: {total_credit}")
         return total_credit
