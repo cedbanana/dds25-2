@@ -9,7 +9,7 @@ if not os.path.isdir("common"):
 import atexit
 import logging
 from flask import Flask, request
-from config import db, payment_channel, stock_channel, PROFILING
+from config import db, PROFILING
 from service import order_blueprint
 
 from prometheus_flask_exporter import PrometheusMetrics
@@ -46,15 +46,27 @@ def after_request(response):
 @atexit.register
 def cleanup():
     db.close()
-    payment_channel.close()
-    stock_channel.close()
+    # payment_channel.close()
+    # stock_channel.close()
 
 
 metrics = PrometheusMetrics(app)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
+    app.logger.setLevel(logging.DEBUG)  # Set level to DEBUG to capture all logs
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)  # Log level to DEBUG to capture detailed logs
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    app.logger.addHandler(handler)
 else:
     gunicorn_logger = logging.getLogger("gunicorn.error")
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)
+    app.logger.setLevel(logging.DEBUG)  # Set level to DEBUG to capture all logs
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)  # Log level to DEBUG to capture detailed logs
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    app.logger.addHandler(handler)

@@ -96,7 +96,7 @@ services:
   ## Database Solutions
   redis-payment:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
     networks:
       default:
       devnet_dds:
@@ -104,53 +104,53 @@ services:
 
   redis-order:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
 
   redis-stock:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
 
-  ignite:
-    image: apacheignite/ignite:2.14.0
-    container_name: ignite
-    networks:
-      default:
-      devnet_dds:
-        ipv4_address: 172.172.69.11
+  # ignite:
+  #   image: apacheignite/ignite:2.14.0
+  #   container_name: ignite
+  #   networks:
+  #     default:
+  #     devnet_dds:
+  #       ipv4_address: 172.172.69.11
 
-  ## Monitoring Solutions
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-    networks:
-      default:
-      devnet_dds:
-        ipv4_address: 172.172.69.12
-    depends_on:
-      - order-service
-      - stock-service
-      - payment-service
+  # ## Monitoring Solutions
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: prometheus
+  #   volumes:
+  #     - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     default:
+  #     devnet_dds:
+  #       ipv4_address: 172.172.69.12
+  #   depends_on:
+  #     - order-service
+  #     - stock-service
+  #     - payment-service
 
-  grafana:
-    image: grafana/grafana:latest
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    ports:
-      - "3000:3000"
-    networks:
-      default:
-      devnet_dds:
-        ipv4_address: 172.172.69.13
-    depends_on:
-      - prometheus
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   volumes:
+  #     - ./grafana/provisioning:/etc/grafana/provisioning
+  #     - ./grafana/dashboards:/var/lib/grafana/dashboards
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   ports:
+  #     - "3000:3000"
+  #   networks:
+  #     default:
+  #     devnet_dds:
+  #       ipv4_address: 172.172.69.13
+  #   depends_on:
+  #     - prometheus
 
 networks:
   devnet_dds:
