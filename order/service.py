@@ -258,23 +258,55 @@ async def checkout_individual(order_id: str):
 
         deducted_items = {}
         
-        tasks = []
+        # Process payment.
+        payment_rpc = payment_client.ProcessPayment(
+                PaymentRequest(user_id=order.user_id, amount=order.total_cost))
 
+        failed_stock = False
 
+        payment_response = None
 
         # Deduct stock for each item.
         for item_id, total_qty in items.items():
-            try:
+            # try:
+            if payment_response is None and payment_rpc.done():
+                payment_response = await payment_rpc
+                if not payment_response.success:
+                    err_msg = payment_response.error or "Payment failed CAUGHT EARLY!"
+                    current_app.logger.error("Payment failed for order %s: %s", order_id, err_msg)
+                    await revert_items(deducted_items)
+                    abort(400, err_msg)
 
-                stock_rpc = stock_client.RemoveStock(
-                        StockAdjustment(item_id=item_id, quantity=total_qty)
-                )
-                tasks.append((item_id, total_qty, stock_rpc))
+            stock_response = await stock_client.RemoveStock(
+                    StockAdjustment(item_id=item_id, quantity=total_qty)
+            )
 
-            except Exception as e:
-                current_app.logger.exception(
-                    "Error calling RemoveStock for item %s", item_id
+            if not stock_response.status.success:
+                err_msg = stock_response.status.error or f"Insufficient stock for {item_id}"
+                current_app.logger.error(
+                    "Stock deduction failed for item %s: %s", item_id, err_msg
                 )
+                failed_stock = True
+                revert_items(deducted_items)
+
+                payment_response = await payment_rpc 
+
+                if payment_response.success:
+                    refund_response = await payment_client.AddFunds(
+                        PaymentRequest(user_id=order.user_id, amount=order.total_cost))
+                    err_msg = refund_response.error or "Refund initiated"
+                    current_app.logger.error(
+                        "Refund initiated for order %s: %s.", order_id, err_msg
+                    )
+                abort(400, err_msg)
+            else:
+                deducted_items[item_id] = total_qty
+                #order_total_cost += stock_response.price
+
+            # except Exception as e:
+            #     current_app.logger.exception(
+            #         "Error calling RemoveStock for item %s", item_id
+            #     )
                 # revert_items(deducted_items)
                 #abort(400, "Error communicating with stock service")
 
@@ -282,37 +314,8 @@ async def checkout_individual(order_id: str):
                     "TOTAL PAYMENT %s", order.total_cost
                 )
 
-         # Process payment.
-        payment_rpc = payment_client.ProcessPayment(
-                PaymentRequest(user_id=order.user_id, amount=order.total_cost))
-
-         
-
-        failed_stock = False
-        err_msg = "Test"
-        for item_id, total_qty, rpc_call in tasks:
-            stock_response = await rpc_call
-            
-            if not stock_response.status.success:
-                err_msg = stock_response.status.error or f"Insufficient stock for {item_id}"
-                current_app.logger.error(
-                    "Stock deduction failed for item %s: %s", item_id, err_msg
-                )
-                failed_stock = True
-                # revert_items(deducted_items)
-                # abort(400, err_msg)
-            else:
-                deducted_items[item_id] = total_qty
-                #order_total_cost += stock_response.price
-
-        # if failed_stock:
-        #     await revert_items(deducted_items)
-        #     abort(400, err_msg)
-
-
-        
-
-        payment_response = await payment_rpc
+        if payment_response is None:
+            payment_response = await payment_rpc
         
         if not payment_response.success:
             err_msg = payment_response.error or "Payment failed"
@@ -320,31 +323,31 @@ async def checkout_individual(order_id: str):
             await revert_items(deducted_items)
             abort(400, err_msg)
 
-        if failed_stock:
-            err_msg = stock_response.status.error or f"Insufficient stock for an item in the cart"
-            current_app.logger.error(
-                "Stock deduction failed for order %s: %s.", order_id, err_msg
-            )
-            await revert_items(deducted_items)
-            # current_app.logger.error("Initiated refund for order %s.", order_id)
+        # if failed_stock:
+        #     err_msg = stock_response.status.error or f"Insufficient stock for an item in the cart"
+        #     current_app.logger.error(
+        #         "Stock deduction failed for order %s: %s.", order_id, err_msg
+        #     )
+        #     await revert_items(deducted_items)
+        #     # current_app.logger.error("Initiated refund for order %s.", order_id)
 
 
-            refund_response = await payment_client.AddFunds(
-                PaymentRequest(user_id=order.user_id, amount=order.total_cost))
+        #     refund_response = await payment_client.AddFunds(
+        #         PaymentRequest(user_id=order.user_id, amount=order.total_cost))
 
-            if not refund_response.success:
-                err_msg = refund_response.error or "Refund failed"
-                current_app.logger.error(
-                    "Refund failed for order %s: %s.", order_id, err_msg
-                )
-                abort(400, err_msg)
-            else:
-                current_app.logger.error(
-                    "Refund succeeded for order %s.", order_id
-                )
-                abort(400, err_msg)
+        #     if not refund_response.success:
+        #         err_msg = refund_response.error or "Refund failed"
+        #         current_app.logger.error(
+        #             "Refund failed for order %s: %s.", order_id, err_msg
+        #         )
+        #         abort(400, err_msg)
+        #     else:
+        #         current_app.logger.error(
+        #             "Refund succeeded for order %s.", order_id
+        #         )
+        #         abort(400, err_msg)
 
-            abort(400, err_msg)
+        #     abort(400, err_msg)
 
     order.paid = True
     try:
