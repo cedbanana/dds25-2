@@ -1,4 +1,5 @@
-Flask[async]==3.0.2
+quart==0.20.0
+uvicorn==0.34.0
 redis==5.0.3
 gunicorn==21.2.0
 requests==2.31.0

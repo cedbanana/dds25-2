@@ -73,6 +73,14 @@ class DatabaseClient(ABC, Generic[T]):
         pass
 
     @abstractmethod
+    def get_all(self, ids: List[str], model_class: Type[T]) -> List[Optional[T]]:
+        pass
+
+    @abstractmethod
+    def save_all(self, models: List[T]) -> None:
+        pass
+
+    @abstractmethod
     def delete(self, id: str) -> bool:
         pass
 

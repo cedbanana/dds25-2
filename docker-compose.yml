@@ -28,7 +28,7 @@ services:
       context: .
       dockerfile: Dockerfile.order
     image: order:latest
-    command: gunicorn -b 0.0.0.0:5000 -w 2 --timeout 30 --log-level=info app:app
+    command: gunicorn -b 0.0.0.0:5000 -w 2 --timeout 30 --log-level=info -k uvicorn.workers.UvicornWorker app:app
     env_file:
       - env/order_redis.env
     environment: &dbenv
@@ -39,7 +39,7 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 1
+      replicas: 3
     volumes:
       - './order/profiles:/home/flask-app/profiles'
     labels:
@@ -61,7 +61,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 1
+      replicas: 3
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
     labels:
@@ -85,7 +85,7 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 1
+      replicas: 3
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.payment.rule=PathPrefix(`/payment/`)"
