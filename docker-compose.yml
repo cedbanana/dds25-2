@@ -39,7 +39,7 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 3
+      replicas: 4
     volumes:
       - './order/profiles:/home/flask-app/profiles'
     labels:
@@ -48,6 +48,10 @@ services:
       - "traefik.http.middlewares.order-stripprefix.stripprefix.prefixes=/orders"
       - "traefik.http.routers.order.middlewares=order-stripprefix"
       - "traefik.http.services.order.loadbalancer.server.port=5000"
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
 
   stock-service:
     build:
@@ -61,7 +65,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 3
+      replicas: 4
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
     labels:
@@ -70,6 +74,10 @@ services:
       - "traefik.http.middlewares.stock-stripprefix.stripprefix.prefixes=/stock"
       - "traefik.http.routers.stock.middlewares=stock-stripprefix"
       - "traefik.http.services.stock.loadbalancer.server.port=5000"
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
 
   payment-service:
     build:
@@ -85,13 +93,17 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 3
+      replicas: 4
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.payment.rule=PathPrefix(`/payment/`)"
       - "traefik.http.middlewares.payment-stripprefix.stripprefix.prefixes=/payment"
       - "traefik.http.routers.payment.middlewares=payment-stripprefix"
       - "traefik.http.services.payment.loadbalancer.server.port=5000"
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
 
   ## Database Solutions
   redis-payment:
