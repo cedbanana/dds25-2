@@ -168,7 +168,7 @@ def checkout_bulk(order_id: str):
     for item in order.items:
         item_id, qty = item.split(":")
         if item_id not in items:
-            items[item_id] = Stock(id=item_id, stock=0, price=0)
+            items[item_id] = Stock(id=item_id, stock=0, price=0, reserved=0)
 
         items[item_id].stock += int(qty)
 

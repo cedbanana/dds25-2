@@ -36,7 +36,7 @@ def get_item_field_from_db(id: str, field: str, db=db) -> Stock:
 def create_item(price: int):
     key = str(uuid.uuid4())
     current_app.logger.info("Creating new item with id: %s", key)
-    stock_item = Stock(id=key, stock=0, price=int(price), reserved = 0)
+    stock_item = Stock(id=key, stock=0, price=int(price), reserved=0)
     try:
         db.save(stock_item)
         current_app.logger.info("Item created: %s", key)
@@ -53,7 +53,7 @@ def batch_init_items(n: int, starting_stock: int, item_price: int):
         starting_stock = int(starting_stock)
         item_price = int(item_price)
         for i in range(n):
-            stock_item = Stock(id=str(i), stock=starting_stock, price=item_price)
+            stock_item = Stock(id=str(i), stock=starting_stock, price=item_price, reserved=0)
             db.save(stock_item)
         current_app.logger.info("Batch init for stock successful with %s items", n)
     except Exception as e:
