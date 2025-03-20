@@ -128,8 +128,6 @@ class RedisClient(DatabaseClient[T]):
         converted_data = {"id": id}
         annotations = model_class.__annotations__
 
-        print(values, keys)
-
         if any(v is None for v in values):
             return None
 

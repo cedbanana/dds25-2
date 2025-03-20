@@ -55,7 +55,6 @@ class RedisStreamConsumer:
         logging.error(
             "Starting consumer %s on stream key %s", self.consumer_name, self.stream_key
         )
-        print("AAAAAA")
         while True:
             try:
                 # Read messages from the stream
