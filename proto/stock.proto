@@ -11,7 +11,7 @@ service StockService {
   rpc RemoveStock(StockAdjustment) returns (StockAdjustmentResponse);
   rpc BulkOrder(BulkStockAdjustment) returns (BulkStockAdjustmentResponse);
   rpc BulkRefund(BulkStockAdjustment) returns (BulkStockAdjustmentResponse);
-  rpc UpdateTransactionStatus(common.TransactionStatus) returns (common.TransactionStatus);
+  rpc VibeCheckTransactionStatus(common.TransactionStatus) returns (common.TransactionStatus);
 }
 
 message Item {

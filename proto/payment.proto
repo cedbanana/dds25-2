@@ -8,7 +8,7 @@ service PaymentService {
   rpc AddFunds(AddFundsRequest) returns (common.OperationResponse);
   rpc ProcessPayment(PaymentRequest) returns (PaymentResponse);
   rpc FindUser(FindUserRequest) returns (FindUserResponse);
-  rpc UpdateTransactionStatus(common.TransactionStatus) returns (common.TransactionStatus);
+  rpc VibeCheckTransactionStatus(common.TransactionStatus) returns (common.TransactionStatus);
 }
 
 message User {

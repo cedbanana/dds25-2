@@ -81,8 +81,45 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             logging.exception("Error in FindUser")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    async def UpdateTransactionStatus(self, request, context):
-        pass
+    async def VibeCheckTransactionStatus(self, request, context):
+        try:
+            count_retries = 0
+            transaction = None
+            while transaction is None and count_retries < 10:
+                context.abort(
+                    grpc.StatusCode.NOT_FOUND, f"Transaction: {request.tid} not found, retry!"
+                )
+
+                transaction = db.get(request.tid, Transaction)
+                count_retries += 1
+                await asyncio.sleep(0.1)
+
+                stale_transaction = Transaction(
+                    request.tid,
+                    TransactionStatus.STALE,
+                )
+
+                if transaction is None:
+                    db.save(stale_transaction)
+                    return stale_transaction.to_proto()
+
+            # Revert here
+            if request.success == False and transaction.status == TransactionStatus.SUCCESS:
+                try:
+                    for k, v in transaction.details.items():
+                        db.increment(k, "credit", v)
+                except Exception as e:
+                    logging.exception("Error in reverting payment")
+                    context.abort(grpc.StatusCode.INTERNAL, str(e))
+                    return common_pb2.TransactionStatus(
+                        tid=request.tid, success=False
+                    )
+
+            # Successful
+            return transaction.to_proto()
+        except Exception as e:
+            logging.exception("Error in trying to check transaction status.")
+            context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
 async def serve():
