@@ -38,11 +38,19 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             options=(("grpc.lb_policy_name", "round_robin"),),
         )
         self._stock_client = StockServiceStub(self._stock_channel)
+        self._stream_producer = db.get_stream_producer(STREAM_KEY)
 
-    def callback(self, tid=""):
+    def callback(self, id, tid=""):
         transaction = db.get(tid, Transaction)
+
         if transaction is None:
             return
+
+        if transaction.status == TransactionStatus.PENDING:
+            logging.info("Transaction %s is still pending", tid)
+            self._stream_producer.push(id, tid=tid)
+            return
+
         response = self._stock_client.VibeCheckerTransactionStatus(
             transaction.to_proto()
         )
@@ -56,8 +64,9 @@ class VibeCheckerTransactionStatus(StreamProcessor):
 
         logging.error("Transaction %s failed!", tid)
 
-        for k, v in transaction.details.items():
-            db.increment(k, "credit", v)
+        if transaction.status == TransactionStatus.FAILURE:
+            for k, v in transaction.details.items():
+                db.increment(k, "credit", v)
 
         db.delete(transaction)
 

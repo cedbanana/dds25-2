@@ -4,8 +4,8 @@ import grpc
 import grpc.aio
 import asyncio
 
-from config import db
-from models import Stock
+from config import STREAM_KEY, db
+from models import Stock, Transaction, TransactionStatus
 from proto import stock_pb2, stock_pb2_grpc, common_pb2
 
 import sys
@@ -18,6 +18,8 @@ handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 root.addHandler(handler)
+
+stream_producer = db.get_stream_producer(STREAM_KEY)
 
 
 class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
@@ -62,6 +64,14 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         try:
             item_id = request.item_id
 
+            transaction = Transaction(
+                request.tid,
+                TransactionStatus.PENDING,
+                {item_id: request.quantity},
+            )
+            db.save(transaction)
+            stream_producer.push(tid=request.tid)
+
             if not db.lte_decrement(item_id, "stock", request.quantity, request.tid):
                 logging.error("Insufficient stock for item: %s", request.item_id)
                 return stock_pb2.StockAdjustmentResponse(
@@ -92,6 +102,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             items = request.items
             cost = 0
 
+            # Is this really necessary?
             prices = db.m_get_attr([item.id for item in items], "price", Stock)
             if prices is None:
                 return stock_pb2.BulkStockAdjustmentResponse(
@@ -102,6 +113,14 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 )
 
             cost = sum([prices[item.id] * item.stock for item in items])
+
+            transaction = Transaction(
+                request.tid,
+                TransactionStatus.PENDING,
+                {item.id: item.stock for item in items},
+            )
+            db.save(transaction)
+            stream_producer.push(tid=request.tid)
 
             if not db.m_gte_decrement({item.id: item.stock for item in items}, "stock"):
                 logging.error("Insufficient stock for items")

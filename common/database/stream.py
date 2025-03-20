@@ -17,7 +17,7 @@ class RedisStreamProducer:
         self.redis_client = redis_client
         self.stream_key = stream_key
 
-    def push(self, data: dict, id="*"):
+    def push(self, id="*", **data):
         """
         Push a message to a Redis stream.
 
@@ -69,7 +69,7 @@ class RedisStreamConsumer:
                             # Parse the message value as JSON
                             try:
                                 # Pass the data as kwargs to the callback
-                                callback(**data)
+                                callback(id, **data)
                                 # Acknowledge the message
                                 self.redis_client.xack(
                                     self.stream_key, self.consumer_group, message_id

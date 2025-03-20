@@ -2,8 +2,8 @@ import logging
 from concurrent import futures
 import grpc
 import grpc.aio
-from config import db
-from models import User
+from config import STREAM_KEY, db
+from models import User, Transaction, TransactionStatus
 from proto import payment_pb2, payment_pb2_grpc, common_pb2
 import asyncio
 
@@ -17,6 +17,8 @@ handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 root.addHandler(handler)
+
+stream_producer = db.get_stream_producer(STREAM_KEY)
 
 
 class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
@@ -44,6 +46,14 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
     async def ProcessPayment(self, request, context):
         try:
             user_id = request.user_id
+
+            transaction = Transaction(
+                request.tid,
+                TransactionStatus.PENDING,
+                {request.user_id: request.amount},
+            )
+            db.save(transaction)
+            stream_producer.push(tid=request.tid)
 
             if not db.lte_decrement(user_id, "credit", request.amount, request.tid):
                 logging.error(
