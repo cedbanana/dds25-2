@@ -4,6 +4,15 @@ package common;
 
 message Empty {}
 
+message Transaction {
+  string tid = 1;
+}
+
+message TransactionStatus {
+  string tid = 1;
+  bool success = 2;
+}
+
 message Error {
   string message = 1;
 }

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
+import enum
 from typing import List, Tuple
-from proto import order_pb2, stock_pb2, payment_pb2
+from proto import order_pb2, stock_pb2, payment_pb2, common_pb2
 
 
 @dataclass
@@ -66,3 +67,28 @@ class User:
     @classmethod
     def from_proto(cls, proto: payment_pb2.User) -> "User":
         return cls(id=proto.id, credit=proto.credit)
+
+
+class TransactionStatus(enum.Enum):
+    PENDING = 0
+    SUCCESS = 1
+    FAILURE = 2
+
+
+class Transaction:
+    tid: str
+    status: TransactionStatus
+
+    def to_proto(self) -> common_pb2.TransactionStatus:
+        return common_pb2.TransactionStatus(
+            tid=self.tid, success=self.status == TransactionStatus.SUCCESS
+        )
+
+    @classmethod
+    def from_proto(cls, proto: common_pb2.TransactionStatus) -> "Transaction":
+        return cls(
+            tid=proto.tid,
+            status=TransactionStatus.SUCCESS
+            if proto.success
+            else TransactionStatus.FAILURE,
+        )

@@ -6,7 +6,7 @@ import warnings
 from proto import common_pb2 as proto_dot_common__pb2
 from proto import payment_pb2 as proto_dot_payment__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.67.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -50,6 +50,11 @@ class PaymentServiceStub(object):
                 request_serializer=proto_dot_payment__pb2.FindUserRequest.SerializeToString,
                 response_deserializer=proto_dot_payment__pb2.FindUserResponse.FromString,
                 _registered_method=True)
+        self.UpdateTransactionStatus = channel.unary_unary(
+                '/payment.PaymentService/UpdateTransactionStatus',
+                request_serializer=proto_dot_common__pb2.TransactionStatus.SerializeToString,
+                response_deserializer=proto_dot_common__pb2.TransactionStatus.FromString,
+                _registered_method=True)
 
 
 class PaymentServiceServicer(object):
@@ -73,6 +78,12 @@ class PaymentServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def UpdateTransactionStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PaymentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -90,6 +101,11 @@ def add_PaymentServiceServicer_to_server(servicer, server):
                     servicer.FindUser,
                     request_deserializer=proto_dot_payment__pb2.FindUserRequest.FromString,
                     response_serializer=proto_dot_payment__pb2.FindUserResponse.SerializeToString,
+            ),
+            'UpdateTransactionStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTransactionStatus,
+                    request_deserializer=proto_dot_common__pb2.TransactionStatus.FromString,
+                    response_serializer=proto_dot_common__pb2.TransactionStatus.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -173,6 +189,33 @@ class PaymentService(object):
             '/payment.PaymentService/FindUser',
             proto_dot_payment__pb2.FindUserRequest.SerializeToString,
             proto_dot_payment__pb2.FindUserResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTransactionStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/payment.PaymentService/UpdateTransactionStatus',
+            proto_dot_common__pb2.TransactionStatus.SerializeToString,
+            proto_dot_common__pb2.TransactionStatus.FromString,
             options,
             channel_credentials,
             insecure,

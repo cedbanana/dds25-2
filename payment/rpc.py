@@ -61,6 +61,9 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             logging.exception("Error in FindUser")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
+    def UpdateTransactionStatus(self, request, context):
+        pass
+
 
 def grpc_server():
     interceptor = PromServerInterceptor()
