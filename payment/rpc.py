@@ -35,16 +35,19 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
         try:
             user_id = request.user_id
 
-            if not db.lte_decrement(user_id, "credit", request.amount):
-                logging.error(
-                    "Payment failed for user %s: insufficient credit",
-                    request.user_id,
-                )
-                return payment_pb2.PaymentResponse(
-                    success=False, error="Insufficient funds"
-                )
+            with db.transaction() as client:
+                client.lte_decrement(user_id, "credit", request.amount)
 
-            return payment_pb2.PaymentResponse(success=True)
+                if not test:
+                    logging.error(
+                        "Payment failed for user %s: insufficient credit",
+                        request.user_id,
+                    )
+                    return payment_pb2.PaymentResponse(
+                        success=False, error="Insufficient funds"
+                    )
+
+                return payment_pb2.PaymentResponse(success=True)
         except Exception as e:
             logging.exception("Error in ProcessPayment")
             context.abort(grpc.StatusCode.INTERNAL, str(e))

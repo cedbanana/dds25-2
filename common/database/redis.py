@@ -316,6 +316,7 @@ class RedisClient(DatabaseClient[T]):
 
         client.mset(writes)
 
+    # Not sure if lua scripts work with EVALSHA in pipelines. For now fall back to EVAL
     def lte_decrement(self, id: str, attribute: str, amount: int) -> bool:
         self._prepare_for_changes()
         client = self._get_client()
