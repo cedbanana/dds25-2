@@ -39,7 +39,7 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 4
+      replicas: 3
     volumes:
       - './order/profiles:/home/flask-app/profiles'
     labels:
@@ -65,7 +65,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 4
+      replicas: 1
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
     labels:
@@ -78,6 +78,42 @@ services:
       nofile:
         soft: "65536"
         hard: "65536"
+
+  stock-rpc:
+    build:
+      context: .
+      dockerfile: Dockerfile.stock
+    image: stock:latest
+    command: python rpc.py
+    env_file:
+      - env/stock_redis.env
+    environment: *dbenv
+    depends_on:
+      - redis-stock
+    deploy:
+      replicas: 1
+    volumes:
+      - './stock/profiles:/home/flask-app/profiles'
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
+
+  stock-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile.stock
+    image: stock:latest
+    command: python stream.py
+    env_file:
+      - env/stock_redis.env
+    environment: *dbenv
+    depends_on:
+      - redis-stock
+    deploy:
+      replicas: 1
+    volumes:
+      - './stock/profiles:/home/flask-app/profiles'
 
   payment-service:
     build:
@@ -93,7 +129,7 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 4
+      replicas: 1
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.payment.rule=PathPrefix(`/payment/`)"
@@ -104,6 +140,38 @@ services:
       nofile:
         soft: "65536"
         hard: "65536"
+
+  payment-rpc:
+    build:
+      context: .
+      dockerfile: Dockerfile.payment
+    image: payment:latest
+    command: python rpc.py
+    env_file:
+      - env/payment_redis.env
+    environment: *dbenv
+    depends_on:
+      - redis-payment
+    volumes:
+      - './payment/profiles:/home/flask-app/profiles'
+    deploy:
+      replicas: 1
+
+  payment-stream:
+    build:
+      context: .
+      dockerfile: Dockerfile.payment
+    image: payment:latest
+    command: python stream.py
+    env_file:
+      - env/payment_redis.env
+    environment: *dbenv
+    depends_on:
+      - redis-payment
+    volumes:
+      - './payment/profiles:/home/flask-app/profiles'
+    deploy:
+      replicas: 1
 
   ## Database Solutions
   redis-payment:

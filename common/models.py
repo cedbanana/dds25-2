@@ -75,6 +75,7 @@ class TransactionStatus(enum.Enum):
     FAILURE = 2
 
 
+@dataclass
 class Transaction:
     tid: str
     status: TransactionStatus

@@ -4,7 +4,7 @@ from database import TransactionConfig
 import grpc
 
 from config import db
-from models import User
+from models import User, Transaction, TransactionStatus
 from proto import payment_pb2, payment_pb2_grpc, common_pb2
 from py_grpc_prometheus.prometheus_server_interceptor import PromServerInterceptor
 
@@ -35,19 +35,25 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
         try:
             user_id = request.user_id
 
-            with db.transaction() as client:
-                client.lte_decrement(user_id, "credit", request.amount)
+            transaction = Transaction(request.tid, TransactionStatus.PENDING)
 
-                if not test:
-                    logging.error(
-                        "Payment failed for user %s: insufficient credit",
-                        request.user_id,
-                    )
-                    return payment_pb2.PaymentResponse(
-                        success=False, error="Insufficient funds"
-                    )
+            pipeline = db.pipeline()
+            pipeline.lte_decrement(user_id, "credit", request.amount)
+            pipeline.save(transaction)
+            results = pipeline.execute_pipeline()
 
-                return payment_pb2.PaymentResponse(success=True)
+            if not results[0]:
+                logging.error(
+                    "Payment failed for user %s: insufficient credit",
+                    request.user_id,
+                )
+                return payment_pb2.PaymentResponse(
+                    success=False, error="Insufficient funds"
+                )
+
+            transaction.status
+
+            return payment_pb2.PaymentResponse(success=True)
         except Exception as e:
             logging.exception("Error in ProcessPayment")
             context.abort(grpc.StatusCode.INTERNAL, str(e))

@@ -1,19 +1,10 @@
-from abc import ABC, abstractmethod
-import logging
-from typing import List, TypeVar, Generic, Type, Optional, Dict, Any, cast, get_origin
-from dataclasses import MISSING, asdict, fields
-from contextlib import contextmanager
-import random
-import redis
 import json
-import copy
-from pyignite import Client
-from pyignite.datatypes.cache_config import CacheAtomicityMode
-from pyignite.datatypes import TransactionConcurrency, TransactionIsolation
-from pyignite.datatypes.prop_codes import PROP_CACHE_ATOMICITY_MODE, PROP_NAME
-import pyignite.datatypes.primitive_objects as itypes_primitive
-import pyignite.datatypes.standard as itypes_standard
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, get_origin
 
+
+from .stream import RedisStreamProducer
 
 T = TypeVar("T")
 
@@ -136,3 +127,9 @@ class DatabaseClient(ABC, Generic[T]):
     def close(self):
         """Close the database client connection"""
         pass
+
+    def get_stream_producer(self, stream_key):
+        return RedisStreamProducer(self.redis, stream_key)
+
+    def initialize_stream_processor(self, processor_class):
+        return processor_class(self.redis)
