@@ -442,3 +442,16 @@ class RedisClient(DatabaseClient[T]):
             pipeline.unwatch()
             pipeline.reset()
             raise TransactionError(e)
+
+    def pipeline(self):
+        pipeline = self._get_client().pipeline()
+        client = copy.copy(self)
+        client.pipeline = pipeline
+
+        return client
+
+    def execute_pipeline(self):
+        if self.pipeline is None:
+            raise ValueError("No pipeline to execute")
+
+        return self.pipeline.execute()
