@@ -51,9 +51,11 @@ def batch_init_users(n: int, starting_money: int):
     try:
         n = int(n)
         starting_money = int(starting_money)
+        users = []
         for i in range(n):
             user = User(id=str(i), credit=starting_money)
-            db.save(user)
+            users.append(user)
+        db.save_all(users)
         current_app.logger.info("Batch init for users successful with %s users", n)
     except Exception as e:
         current_app.logger.exception("Batch initialization failed for users")

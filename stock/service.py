@@ -52,9 +52,12 @@ def batch_init_items(n: int, starting_stock: int, item_price: int):
         n = int(n)
         starting_stock = int(starting_stock)
         item_price = int(item_price)
+        items = []
         for i in range(n):
-            stock_item = Stock(id=str(i), stock=starting_stock, price=item_price, reserved=0)
-            db.save(stock_item)
+            stock_item = Stock(id=str(i), stock=starting_stock, price=item_price)
+            items.append(stock_item)
+
+        db.save_all(items)
         current_app.logger.info("Batch init for stock successful with %s items", n)
     except Exception as e:
         current_app.logger.exception("Batch initialization failed for stock")

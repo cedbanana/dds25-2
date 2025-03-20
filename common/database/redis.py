@@ -158,22 +158,84 @@ class RedisClient(DatabaseClient[T]):
         # Get model class to check types
         model_class = type(model)
 
-        pipe = client.pipeline() if self.pipeline is None else client
+        client = client if self.pipeline is None else self.pipeline
+
+        kvs = {}
 
         for attr, value in model_dict.items():
             if attr != "id":
                 field_type = model_class.__annotations__[attr]
                 serialized_value = self._serialize_value(value, field_type)
-                pipe.set(self._get_key(model.id, attr), serialized_value)
+                kvs[self._get_key(model.id, attr)] = serialized_value
 
-        if self.pipeline is None:
-            pipe.execute()
+        client.mset(kvs)
+
+    def get_all(self, ids: List[str], model_class: Type[T]) -> List[Optional[T]]:
+        client = self._get_client()
+
+        result = []
+        annotations = model_class.__annotations__
+
+        for id in ids:
+            keys = [self._get_key(id, field.name) for field in fields(model_class)]
+            values = client.mget(keys)
+
+            if all(v is None for v in values):
+                result.append(None)
+                continue
+
+            attributes = {key.split(":")[-1]: value for key, value in zip(keys, values)}
+            converted_data = {"id": id}
+
+            for field in fields(model_class):
+                field_name = field.name
+                if field_name == "id":
+                    continue
+
+                value = attributes.get(field_name)
+                if value is None:
+                    if field.default is not MISSING:
+                        converted_data[field_name] = field.default
+                    elif field.default_factory is not MISSING:
+                        converted_data[field_name] = field.default_factory()
+                    continue
+
+                converted_data[field_name] = self._deserialize_value(
+                    value, annotations[field_name]
+                )
+
+            result.append(model_class(**converted_data))
+
+        return result
+
+    def save_all(self, models: List[T]) -> None:
+        if not models:
+            return
+
+        self._prepare_for_changes()
+        client = self._get_client()
+        kvs = {}
+
+        for model in models:
+            if not hasattr(model, "id"):
+                raise ValueError("Each model must have an id attribute")
+
+            model_dict = asdict(model)
+            model_class = type(model)
+
+            for attr, value in model_dict.items():
+                if attr != "id":
+                    field_type = model_class.__annotations__[attr]
+                    serialized_value = self._serialize_value(value, field_type)
+                    kvs[self._get_key(model.id, attr)] = serialized_value
+
+        client.mset(kvs)
 
     def keys(self, match: str = "*") -> List[str]:
         client = self._get_client()
-        
-        keys = client.keys(match)  
-        
+
+        keys = client.keys(match)
+
         return keys
 
     def delete(self, id: str) -> bool:

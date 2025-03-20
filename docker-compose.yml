@@ -28,7 +28,7 @@ services:
       context: .
       dockerfile: Dockerfile.order
     image: order:latest
-    command: gunicorn -b 0.0.0.0:5000 -w 2 --timeout 30 --log-level=info app:app
+    command: gunicorn -b 0.0.0.0:5000 -w 2 --timeout 30 --log-level=info -k uvicorn.workers.UvicornWorker app:app
     env_file:
       - env/order_redis.env
     environment: &dbenv
@@ -39,7 +39,7 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 1
+      replicas: 4
     volumes:
       - './order/profiles:/home/flask-app/profiles'
     labels:
@@ -48,6 +48,10 @@ services:
       - "traefik.http.middlewares.order-stripprefix.stripprefix.prefixes=/orders"
       - "traefik.http.routers.order.middlewares=order-stripprefix"
       - "traefik.http.services.order.loadbalancer.server.port=5000"
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
 
   stock-service:
     build:
@@ -61,7 +65,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 1
+      replicas: 4
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
     labels:
@@ -70,6 +74,10 @@ services:
       - "traefik.http.middlewares.stock-stripprefix.stripprefix.prefixes=/stock"
       - "traefik.http.routers.stock.middlewares=stock-stripprefix"
       - "traefik.http.services.stock.loadbalancer.server.port=5000"
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
 
   payment-service:
     build:
@@ -85,18 +93,22 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 1
+      replicas: 4
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.payment.rule=PathPrefix(`/payment/`)"
       - "traefik.http.middlewares.payment-stripprefix.stripprefix.prefixes=/payment"
       - "traefik.http.routers.payment.middlewares=payment-stripprefix"
       - "traefik.http.services.payment.loadbalancer.server.port=5000"
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
 
   ## Database Solutions
   redis-payment:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
     networks:
       default:
       devnet_dds:
@@ -104,53 +116,53 @@ services:
 
   redis-order:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
 
   redis-stock:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
 
-  ignite:
-    image: apacheignite/ignite:2.14.0
-    container_name: ignite
-    networks:
-      default:
-      devnet_dds:
-        ipv4_address: 172.172.69.11
+  # ignite:
+  #   image: apacheignite/ignite:2.14.0
+  #   container_name: ignite
+  #   networks:
+  #     default:
+  #     devnet_dds:
+  #       ipv4_address: 172.172.69.11
 
-  ## Monitoring Solutions
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-    networks:
-      default:
-      devnet_dds:
-        ipv4_address: 172.172.69.12
-    depends_on:
-      - order-service
-      - stock-service
-      - payment-service
+  # ## Monitoring Solutions
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: prometheus
+  #   volumes:
+  #     - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     default:
+  #     devnet_dds:
+  #       ipv4_address: 172.172.69.12
+  #   depends_on:
+  #     - order-service
+  #     - stock-service
+  #     - payment-service
 
-  grafana:
-    image: grafana/grafana:latest
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    ports:
-      - "3000:3000"
-    networks:
-      default:
-      devnet_dds:
-        ipv4_address: 172.172.69.13
-    depends_on:
-      - prometheus
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   volumes:
+  #     - ./grafana/provisioning:/etc/grafana/provisioning
+  #     - ./grafana/dashboards:/var/lib/grafana/dashboards
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   ports:
+  #     - "3000:3000"
+  #   networks:
+  #     default:
+  #     devnet_dds:
+  #       ipv4_address: 172.172.69.13
+  #   depends_on:
+  #     - prometheus
 
 networks:
   devnet_dds:

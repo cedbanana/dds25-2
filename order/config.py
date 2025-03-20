@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 import time
-
+import contextvars
+import grpc.aio
 import grpc
 from proto.payment_pb2_grpc import PaymentServiceStub
 from proto.stock_pb2_grpc import StockServiceStub
@@ -12,6 +13,10 @@ from utils import hosttotup, wait_for_ignite
 from models import Order
 
 load_dotenv()
+
+stock_channel_var = contextvars.ContextVar("stock_channel_var", default={})
+payment_channel_var = contextvars.ContextVar("payment_channel_var", default={})
+
 
 if os.environ.get("DB_TYPE", "redis") == "redis":
     db = RedisClient(
@@ -36,15 +41,62 @@ cache = RedisClient(
     db=int(time.time()) + hash(__name__),
 )
 
-# Initialize gRPC clients
-payment_channel = grpc.insecure_channel(
-    os.environ["PAYMENT_SERVICE_ADDR"],
-    options=(("grpc.lb_policy_name", "round_robin"),),
-)
-payment_client = PaymentServiceStub(payment_channel)
 
-stock_channel = grpc.insecure_channel(
-    os.environ["STOCK_SERVICE_ADDR"],
-    options=(("grpc.lb_policy_name", "round_robin"),),
-)
-stock_client = StockServiceStub(stock_channel)
+class AsyncPaymentClient:
+    def __init__(self):
+        self._payment_channel = None
+        self._payment_client = None
+
+    async def __aenter__(self):
+        payment_channel = payment_channel_var.get()
+
+        # Check if gRPC channel and client already in context
+        if not payment_channel:
+            # Create the gRPC channel and client asynchronously
+            self._payment_channel = grpc.aio.insecure_channel(
+                os.environ["PAYMENT_SERVICE_ADDR"],
+                options=(("grpc.lb_policy_name", "round_robin"),),
+            )
+            self._payment_client = PaymentServiceStub(self._payment_channel)
+
+            payment_channel_var.set(payment_channel)
+        else:
+            self._payment_channel = payment_channel
+            self._payment_client = PaymentServiceStub(self._payment_channel)
+
+        return self._payment_client
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Close the channel asynchronously
+        pass 
+        #await self._payment_channel.close()        
+
+
+
+class AsyncStockClient:
+    def __init__(self):
+        self._stock_channel = None
+        self._stock_client = None
+
+    async def __aenter__(self):
+        stock_channel = stock_channel_var.get()
+
+        if not stock_channel:
+            # Create the gRPC channel and client asynchronously
+            self._stock_channel = grpc.aio.insecure_channel(
+                os.environ["STOCK_SERVICE_ADDR"],
+                options=(("grpc.lb_policy_name", "round_robin"),),
+            )
+            self._stock_client = StockServiceStub(self._stock_channel)
+            stock_channel_var.set(stock_channel)
+        else:
+            self._stock_channel = stock_channel
+            self._payment_client = PaymentServiceStub(self._payment_channel)
+            
+        return self._stock_client
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        # Close the channel asynchronously
+        pass
+        #await self._stock_channel.close()
+

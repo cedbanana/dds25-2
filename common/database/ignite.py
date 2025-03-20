@@ -123,6 +123,12 @@ class IgniteClient(DatabaseClient[T]):
 
         self.cache.put_all(updates)
 
+    def get_all(self, ids: List[str], model_class: Type[T]) -> List[Optional[T]]:
+        pass
+
+    def save_all(self, models: List[T]) -> None:
+        pass
+
     def delete(self, id: str) -> bool:
         # Get all keys for this model
         keys = [key for key in self.cache.keys() if key.startswith(f"model:{id}:")]
