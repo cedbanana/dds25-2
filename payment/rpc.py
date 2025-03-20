@@ -1,16 +1,26 @@
 import logging
 from concurrent import futures
-from database import TransactionConfig
 import grpc
-
+import grpc.aio
 from config import db
-from models import User, Transaction, TransactionStatus
+from models import User
 from proto import payment_pb2, payment_pb2_grpc, common_pb2
-from py_grpc_prometheus.prometheus_server_interceptor import PromServerInterceptor
+import asyncio
+
+import sys
+
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+root.addHandler(handler)
 
 
 class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
-    def AddFunds(self, request, context):
+    async def AddFunds(self, request, context):
         try:
             user_model = db.get(request.user_id, User)
             if user_model is None:
@@ -31,18 +41,12 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             logging.exception("Error in AddFunds")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def ProcessPayment(self, request, context):
+    async def ProcessPayment(self, request, context):
         try:
             user_id = request.user_id
 
-            transaction = Transaction(request.tid, TransactionStatus.PENDING)
-
-            pipeline = db.pipeline()
-            pipeline.lte_decrement(user_id, "credit", request.amount)
-            pipeline.save(transaction)
-            results = pipeline.execute_pipeline()
-
-            if not results[0]:
+            # temp fix until scripts fixed
+            if not db.lte_decrement(user_id, "credit", request.amount):
                 logging.error(
                     "Payment failed for user %s: insufficient credit",
                     request.user_id,
@@ -51,14 +55,12 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
                     success=False, error="Insufficient funds"
                 )
 
-            transaction.status
-
             return payment_pb2.PaymentResponse(success=True)
         except Exception as e:
             logging.exception("Error in ProcessPayment")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def FindUser(self, request, context):
+    async def FindUser(self, request, context):
         try:
             user_model = db.get(request.user_id, User)
             if user_model is None:
@@ -70,19 +72,22 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             logging.exception("Error in FindUser")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def UpdateTransactionStatus(self, request, context):
+    async def UpdateTransactionStatus(self, request, context):
         pass
 
 
-def grpc_server():
-    interceptor = PromServerInterceptor()
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10), interceptors=(interceptor,)
-    )
+async def serve():
+    print("Starting gRPC Payment Service")
+    server = grpc.aio.server()
     payment_pb2_grpc.add_PaymentServiceServicer_to_server(
         PaymentServiceServicer(), server
     )
     server.add_insecure_port("[::]:50052")
-    server.start()
+    await server.start()
     logging.info("gRPC Payment Service started on port 50052")
-    server.wait_for_termination()
+    await server.wait_for_termination()
+
+
+if __name__ == "__main__":
+    asyncio.run(serve())
+    print("Payment Service exiting")

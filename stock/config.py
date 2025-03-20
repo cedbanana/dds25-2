@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Add common to path if it is not already there
+if not os.path.isdir("common"):
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
+
+
 import time
 from dotenv import load_dotenv
 from database import RedisClient, IgniteClient
@@ -28,6 +35,10 @@ else:
 
 
 PROFILING = os.environ.get("PROFILING", "false") == "true"
+
+STREAM_KEY = "transactions"
+CONSUMER_GROUP = "pula"
+NUM_STREAM_CONSUMERS = int(os.environ.get("NUM_STREAM_CONSUMERS", "1"))
 
 
 class AsyncPaymentClient:

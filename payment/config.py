@@ -1,5 +1,11 @@
 import os
 import time
+import sys
+
+# Add common to path if it is not already there
+if not os.path.isdir("common"):
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
+
 from dotenv import load_dotenv
 from database import RedisClient, IgniteClient
 from utils import hosttotup, wait_for_ignite
@@ -27,6 +33,10 @@ else:
     )
 
 PROFILING = os.environ.get("PROFILING", "false") == "true"
+
+STREAM_KEY = "transactions"
+CONSUMER_GROUP = "pula"
+NUM_STREAM_CONSUMERS = int(os.environ.get("NUM_STREAM_CONSUMERS", "1"))
 
 
 class AsyncStockClient:

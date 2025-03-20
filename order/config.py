@@ -1,6 +1,12 @@
 import os
 from dotenv import load_dotenv
+import sys
 import time
+
+# Add common to path if it is not already there
+if not os.path.isdir("common"):
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
+
 
 import grpc.aio
 import grpc

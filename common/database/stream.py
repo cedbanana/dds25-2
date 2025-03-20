@@ -103,6 +103,7 @@ class StreamProcessor:
         """Start multiple workers for a specific stream."""
         for i in range(num_workers):
             consumer_name = f"consumer_{i+1}"
+            print("Starting worker", consumer_name)
             thread = threading.Thread(
                 target=self.start_worker,
                 args=(consumer_group, consumer_name),

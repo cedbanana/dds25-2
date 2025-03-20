@@ -1,17 +1,27 @@
 import logging
 from concurrent import futures
 import grpc
-from database import TransactionConfig
-from pyignite.datatypes import TransactionConcurrency, TransactionIsolation
+import grpc.aio
+import asyncio
 
 from config import db
 from models import Stock
 from proto import stock_pb2, stock_pb2_grpc, common_pb2
-from py_grpc_prometheus.prometheus_server_interceptor import PromServerInterceptor
+
+import sys
+
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+root.addHandler(handler)
 
 
 class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
-    def FindItem(self, request, context):
+    async def FindItem(self, request, context):
         try:
             stock_model = db.get(request.item_id, Stock)
             if stock_model is None:
@@ -23,7 +33,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in FindItem")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def AddStock(self, request, context):
+    async def AddStock(self, request, context):
         try:
             stock_model = db.get(request.item_id, Stock)
             if stock_model is None:
@@ -48,7 +58,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in AddStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def RemoveStock(self, request, context):
+    async def RemoveStock(self, request, context):
         try:
             item_id = request.item_id
 
@@ -77,7 +87,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def BulkOrder(self, request, context):
+    async def BulkOrder(self, request, context):
         try:
             items = request.items
             cost = 0
@@ -109,7 +119,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def BulkRefund(self, request, context):
+    async def BulkRefund(self, request, context):
         try:
             items = request.items
 
@@ -140,13 +150,17 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
-def grpc_server():
-    interceptor = PromServerInterceptor()
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10), interceptors=(interceptor,)
-    )
+async def serve():
+    print("Starting gRPC Stock Service")
+    # interceptor = PromServerInterceptor()
+    server = grpc.aio.server()
     stock_pb2_grpc.add_StockServiceServicer_to_server(StockServiceServicer(), server)
     server.add_insecure_port("[::]:50051")
-    server.start()
+    await server.start()
     logging.info("gRPC Stock Service started on port 50051")
-    server.wait_for_termination()
+    await server.wait_for_termination()
+
+
+if __name__ == "__main__":
+    asyncio.run(serve())
+    print("Stock Service exiting")
