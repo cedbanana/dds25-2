@@ -2,6 +2,7 @@ import logging
 import random
 import uuid
 import asyncio
+import uuid
 from collections import defaultdict
 from quart import Blueprint, jsonify, abort, Response, current_app
 from config import db, AsyncPaymentClient, AsyncStockClient
@@ -248,6 +249,7 @@ async def checkout_individual(order_id: str):
     async with AsyncStockClient() as stock_client, AsyncPaymentClient() as payment_client:
         order = get_order_from_db(order_id)
         items = defaultdict(int)
+        tid = str(uuid.uuid4())
 
         for item in order.items:
             item_id, qty = item.split(":")
@@ -255,7 +257,7 @@ async def checkout_individual(order_id: str):
 
         # Process payment.
         payment_rpc = payment_client.ProcessPayment(
-            PaymentRequest(user_id=order.user_id, amount=order.total_cost)
+            PaymentRequest(user_id=order.user_id, amount=order.total_cost, tid=tid)
         )
 
         stock_ids = []
@@ -264,7 +266,7 @@ async def checkout_individual(order_id: str):
         for item_id, total_qty in items.items():
             stock_futures.append(
                 stock_client.RemoveStock(
-                    StockAdjustment(item_id=item_id, quantity=total_qty)
+                    StockAdjustment(item_id=item_id, quantity=total_qty, tid=tid)
                 )
             )
             stock_ids.append(item_id)
@@ -287,14 +289,14 @@ async def checkout_individual(order_id: str):
         if not payment_response.success or len(deducted_items) != len(items):
             if payment_response.success:
                 db.set_attr(order_id, "paid", False, Order)
-                await payment_client.AddFunds(
-                    PaymentRequest(user_id=order.user_id, amount=order.total_cost)
-                )
+                # await payment_client.AddFunds(
+                #     PaymentRequest(user_id=order.user_id, amount=order.total_cost)
+                # )
                 current_app.logger.error("Refund initiated for order %s.", order_id)
 
             if len(deducted_items) > 0:
                 db.set_attr(order_id, "paid", False, Order)
-                await revert_items(deducted_items)
+                # await revert_items(deducted_items)
                 current_app.logger.error("Insufficient stock for some of the items.")
 
         if not payment_response.success:
