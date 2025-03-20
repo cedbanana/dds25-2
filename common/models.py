@@ -80,7 +80,7 @@ class TransactionStatus(enum.Enum):
 class Transaction:
     tid: str
     status: TransactionStatus
-    details: dict
+    details: dict = {}
 
     def to_proto(self) -> common_pb2.TransactionStatus:
         return common_pb2.TransactionStatus(
