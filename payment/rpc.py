@@ -45,8 +45,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
         try:
             user_id = request.user_id
 
-            # temp fix until scripts fixed
-            if not db.lte_decrement(user_id, "credit", request.amount):
+            if not db.lte_decrement(user_id, "credit", request.amount, request.tid):
                 logging.error(
                     "Payment failed for user %s: insufficient credit",
                     request.user_id,

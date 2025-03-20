@@ -1,6 +1,20 @@
 from database.stream import StreamProcessor
-from config import db, STREAM_KEY, CONSUMER_GROUP, NUM_STREAM_CONSUMERS
+from config import (
+    db,
+    STREAM_KEY,
+    CONSUMER_GROUP,
+    NUM_STREAM_CONSUMERS,
+    STOCK_SERVICE_ADDR,
+)
 import logging
+
+import grpc
+
+import grpc.aio
+import grpc
+from proto.stock_pb2_grpc import StockServiceStub
+
+from models import Transaction, TransactionStatus
 
 import sys
 
@@ -14,26 +28,38 @@ handler.setFormatter(formatter)
 root.addHandler(handler)
 
 
-class CreditDeductionConsumer(StreamProcessor):
+class VibeCheckerTransactionStatus(StreamProcessor):
     stream_key = STREAM_KEY
 
-    def callback(self, user_id=None, amount=0, tid=""):
-        logging.info((user_id, amount), tid)
-        try:
-            user_id = user_id
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._stock_channel = grpc.insecure_channel(
+            STOCK_SERVICE_ADDR,
+            options=(("grpc.lb_policy_name", "round_robin"),),
+        )
+        self._stock_client = StockServiceStub(self._stock_channel)
 
-            if not db.lte_decrement(user_id, "credit", amount):
-                logging.error(
-                    "Payment failed for user %s: insufficient credit",
-                    user_id,
-                )
-                ## TODO: SAGA Rollback / Rollback transaction from order
+    def callback(self, tid=""):
+        transaction = db.get(tid, Transaction)
+        response = self._stock_client.VibeCheckerTransactionStatus(
+            transaction.to_proto()
+        )
 
-        except Exception as e:
-            logging.exception("Error in ProcessPayment")
-            ## TODO: SAGA Rollback / Rollback transaction from order
+        t_stock = Transaction.from_proto(response)
+
+        if t_stock.status == TransactionStatus.SUCCESS:
+            logging.info("Transaction %s succeeded!", tid)
+            db.delete(transaction)
+            return
+
+        logging.error("Transaction %s failed!", tid)
+
+        for k, v in transaction.details.items():
+            db.increment(k, "credit", v)
+
+        db.delete(transaction)
 
 
 if __name__ == "__main__":
-    consumer = db.initialize_stream_processor(CreditDeductionConsumer)
+    consumer = db.initialize_stream_processor(VibeCheckerTransactionStatus)
     consumer.start_workers(CONSUMER_GROUP, NUM_STREAM_CONSUMERS)

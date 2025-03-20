@@ -62,7 +62,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         try:
             item_id = request.item_id
 
-            if not db.lte_decrement(item_id, "stock", request.quantity):
+            if not db.lte_decrement(item_id, "stock", request.quantity, request.tid):
                 logging.error("Insufficient stock for item: %s", request.item_id)
                 return stock_pb2.StockAdjustmentResponse(
                     status=common_pb2.OperationResponse(

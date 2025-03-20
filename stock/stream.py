@@ -1,7 +1,17 @@
 from database.stream import StreamProcessor
-from config import db, STREAM_KEY, CONSUMER_GROUP, NUM_STREAM_CONSUMERS
+from config import (
+    db,
+    STREAM_KEY,
+    CONSUMER_GROUP,
+    NUM_STREAM_CONSUMERS,
+    PAYMENT_SERVICE_ADDR,
+)
 import logging
 import json
+
+import grpc
+from proto.payment_pb2_grpc import PaymentServiceStub
+from models import Transaction, TransactionStatus
 
 import sys
 
@@ -15,20 +25,38 @@ handler.setFormatter(formatter)
 root.addHandler(handler)
 
 
-class StockDeductionConsumer(StreamProcessor):
+class VibeCheckerTransactionStatus(StreamProcessor):
     stream_key = STREAM_KEY
 
-    def callback(self, items="", tid=""):
-        items = json.loads(items)
-        try:
-            if not db.m_gte_decrement(items, "stock"):
-                logging.error("Insufficient stock for items")
-                ## TODO Initiate SAGA Rollback from Payment
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._payment_channel = grpc.insecure_channel(
+            PAYMENT_SERVICE_ADDR,
+            options=(("grpc.lb_policy_name", "round_robin"),),
+        )
+        self._payment_client = PaymentServiceStub(self._payment_channel)
+
+    def callback(self, tid=""):
+        transaction = db.get(tid, Transaction)
+        response = self._payment_client.VibeCheckerTransactionStatus(
+            transaction.to_proto()
+        )
+
+        t_payment = Transaction.from_proto(response)
+
+        if t_payment.status == TransactionStatus.SUCCESS:
+            logging.info("Transaction %s succeeded!", tid)
+            db.delete(transaction)
             return
-        except Exception as e:
-            logging.exception("Error in RemoveStock")
+
+        logging.error("Transaction %s failed!", tid)
+
+        for k, v in transaction.details.items():
+            db.increment(k, "stock", v)
+
+        db.delete(transaction)
 
 
 if __name__ == "__main__":
-    consumer = db.initialize_stream_processor(StockDeductionConsumer)
+    consumer = db.initialize_stream_processor(VibeCheckerTransactionStatus)
     consumer.start_workers(CONSUMER_GROUP, NUM_STREAM_CONSUMERS)

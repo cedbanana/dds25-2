@@ -71,14 +71,16 @@ class User:
 
 class TransactionStatus(enum.Enum):
     PENDING = 0
-    SUCCESS = 1
-    FAILURE = 2
+    FAILURE = 1
+    SUCCESS = 2
+    STALE = 3
 
 
 @dataclass
 class Transaction:
     tid: str
     status: TransactionStatus
+    details: dict
 
     def to_proto(self) -> common_pb2.TransactionStatus:
         return common_pb2.TransactionStatus(
