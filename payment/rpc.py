@@ -2,7 +2,7 @@ import logging
 from concurrent import futures
 from database import TransactionConfig
 import grpc
-
+import grpc.aio
 from config import db
 from models import User
 from proto import payment_pb2, payment_pb2_grpc, common_pb2
@@ -35,19 +35,31 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
         try:
             user_id = request.user_id
 
-            with db.transaction() as client:
-                client.lte_decrement(user_id, "credit", request.amount)
+            # temp fix until scripts fixed
+            if not db.lte_decrement(user_id, "credit", request.amount):
+                logging.error(
+                    "Payment failed for user %s: insufficient credit",
+                    request.user_id,
+                )
+                return payment_pb2.PaymentResponse(
+                    success=False, error="Insufficient funds"
+                )
 
-                if not test:
-                    logging.error(
-                        "Payment failed for user %s: insufficient credit",
-                        request.user_id,
-                    )
-                    return payment_pb2.PaymentResponse(
-                        success=False, error="Insufficient funds"
-                    )
+            return payment_pb2.PaymentResponse(success=True)
+        
+            # with db.transaction() as client:
+            #     client.lte_decrement(user_id, "credit", request.amount)
 
-                return payment_pb2.PaymentResponse(success=True)
+            #     if not test:
+            #         logging.error(
+            #             "Payment failed for user %s: insufficient credit",
+            #             request.user_id,
+            #         )
+            #         return payment_pb2.PaymentResponse(
+            #             success=False, error="Insufficient funds"
+            #         )
+
+            #     return payment_pb2.PaymentResponse(success=True)
         except Exception as e:
             logging.exception("Error in ProcessPayment")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
@@ -68,15 +80,15 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
         pass
 
 
-def grpc_server():
-    interceptor = PromServerInterceptor()
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10), interceptors=(interceptor,)
+async def grpc_server():
+    #interceptor = PromServerInterceptor()
+    server = grpc.aio.server(
+        futures.ThreadPoolExecutor(max_workers=10)
     )
     payment_pb2_grpc.add_PaymentServiceServicer_to_server(
         PaymentServiceServicer(), server
     )
     server.add_insecure_port("[::]:50052")
-    server.start()
+    await server.start()
     logging.info("gRPC Payment Service started on port 50052")
-    server.wait_for_termination()
+    await server.wait_for_termination()

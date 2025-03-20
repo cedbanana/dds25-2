@@ -1,7 +1,7 @@
 import sys
 import os
 import time 
-
+import asyncio
 # Add common to path if it is not already there
 if not os.path.isdir("common"):
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
@@ -52,8 +52,11 @@ def cleanup():
     db.close()
 
 
+def start_grpc_server():
+    asyncio.run(grpc_server()) 
+
 metrics = PrometheusMetrics(app)
-grpc_thread = threading.Thread(target=grpc_server, daemon=True)
+grpc_thread = threading.Thread(target=start_grpc_server, daemon=True)
 grpc_thread.start()
 
 if __name__ == "__main__":

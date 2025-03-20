@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import asyncio 
 
 # Add common to path if it is not already there
 if not os.path.isdir("common"):
@@ -50,6 +51,8 @@ def after_request(response):
 def cleanup():
     db.close()
 
+def start_grpc_server():
+    asyncio.run(grpc_server()) 
 
 if __name__ == "__main__":
     app.logger.setLevel(logging.DEBUG)  # Set level to DEBUG to capture all logs
@@ -59,12 +62,12 @@ if __name__ == "__main__":
     handler.setFormatter(formatter)
     app.logger.addHandler(handler)
 
-    grpc_thread = threading.Thread(target=grpc_server, daemon=True)
+    grpc_thread = threading.Thread(target=start_grpc_server, daemon=True)
     grpc_thread.start()
 
     app.run(host="0.0.0.0", port=8000, debug=True)
 else:
-    grpc_thread = threading.Thread(target=grpc_server, daemon=True)
+    grpc_thread = threading.Thread(target=start_grpc_server, daemon=True)
     grpc_thread.start()
 
     gunicorn_logger = logging.getLogger("gunicorn.error")

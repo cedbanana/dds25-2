@@ -1,6 +1,7 @@
 import logging
 from concurrent import futures
 import grpc
+import grpc.aio
 from database import TransactionConfig
 from pyignite.datatypes import TransactionConcurrency, TransactionIsolation
 
@@ -140,13 +141,13 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
 
-def grpc_server():
-    interceptor = PromServerInterceptor()
-    server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=10), interceptors=(interceptor,)
+async def grpc_server():
+    #interceptor = PromServerInterceptor()
+    server = grpc.aio.server(
+        futures.ThreadPoolExecutor(max_workers=10), 
     )
     stock_pb2_grpc.add_StockServiceServicer_to_server(StockServiceServicer(), server)
     server.add_insecure_port("[::]:50051")
-    server.start()
+    await server.start()
     logging.info("gRPC Stock Service started on port 50051")
-    server.wait_for_termination()
+    await server.wait_for_termination()
