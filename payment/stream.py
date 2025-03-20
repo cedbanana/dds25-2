@@ -41,6 +41,8 @@ class VibeCheckerTransactionStatus(StreamProcessor):
 
     def callback(self, tid=""):
         transaction = db.get(tid, Transaction)
+        if transaction is None:
+            return
         response = self._stock_client.VibeCheckerTransactionStatus(
             transaction.to_proto()
         )
