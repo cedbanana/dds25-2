@@ -286,19 +286,6 @@ async def checkout_individual(order_id: str):
             else:
                 deducted_items[stock_ids[i]] = items[stock_ids[i]]
 
-        if not payment_response.success or len(deducted_items) != len(items):
-            if payment_response.success:
-                db.set_attr(order_id, "paid", False, Order)
-                # await payment_client.AddFunds(
-                #     PaymentRequest(user_id=order.user_id, amount=order.total_cost)
-                # )
-                current_app.logger.error("Refund initiated for order %s.", order_id)
-
-            if len(deducted_items) > 0:
-                db.set_attr(order_id, "paid", False, Order)
-                # await revert_items(deducted_items)
-                current_app.logger.error("Insufficient stock for some of the items.")
-
         if not payment_response.success:
             db.set_attr(order_id, "paid", False, Order)
             err_msg = payment_response.error or "Payment failed"
