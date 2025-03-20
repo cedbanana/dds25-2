@@ -12,7 +12,7 @@ from py_grpc_prometheus.prometheus_server_interceptor import PromServerIntercept
 
 
 class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
-    def FindItem(self, request, context):
+    async def FindItem(self, request, context):
         try:
             stock_model = db.get(request.item_id, Stock)
             if stock_model is None:
@@ -24,7 +24,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in FindItem")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def AddStock(self, request, context):
+    async def AddStock(self, request, context):
         try:
             stock_model = db.get(request.item_id, Stock)
             if stock_model is None:
@@ -49,7 +49,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in AddStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def RemoveStock(self, request, context):
+    async def RemoveStock(self, request, context):
         try:
             item_id = request.item_id
 
@@ -78,7 +78,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def BulkOrder(self, request, context):
+    async def BulkOrder(self, request, context):
         try:
             items = request.items
             cost = 0
@@ -110,7 +110,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             logging.exception("Error in RemoveStock")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def BulkRefund(self, request, context):
+    async def BulkRefund(self, request, context):
         try:
             items = request.items
 

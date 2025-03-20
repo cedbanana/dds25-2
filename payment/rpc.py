@@ -10,7 +10,7 @@ from py_grpc_prometheus.prometheus_server_interceptor import PromServerIntercept
 
 
 class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
-    def AddFunds(self, request, context):
+    async def AddFunds(self, request, context):
         try:
             user_model = db.get(request.user_id, User)
             if user_model is None:
@@ -31,7 +31,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             logging.exception("Error in AddFunds")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def ProcessPayment(self, request, context):
+    async def ProcessPayment(self, request, context):
         try:
             user_id = request.user_id
 
@@ -64,7 +64,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             logging.exception("Error in ProcessPayment")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def FindUser(self, request, context):
+    async def FindUser(self, request, context):
         try:
             user_model = db.get(request.user_id, User)
             if user_model is None:
@@ -76,7 +76,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             logging.exception("Error in FindUser")
             context.abort(grpc.StatusCode.INTERNAL, str(e))
 
-    def UpdateTransactionStatus(self, request, context):
+    async def UpdateTransactionStatus(self, request, context):
         pass
 
 
