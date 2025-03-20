@@ -75,22 +75,25 @@ class TransactionStatus(enum.Enum):
     SUCCESS = 2
     STALE = 3
 
+    def __str__(self) -> str:
+        return str(self.value)
+
 
 @dataclass
 class Transaction:
-    tid: str
+    id: str
     status: TransactionStatus
-    details: dict = {}
+    details: dict = field(default_factory=dict)
 
     def to_proto(self) -> common_pb2.TransactionStatus:
         return common_pb2.TransactionStatus(
-            tid=self.tid, success=self.status == TransactionStatus.SUCCESS
+            tid=self.id, success=self.status == TransactionStatus.SUCCESS
         )
 
     @classmethod
     def from_proto(cls, proto: common_pb2.TransactionStatus) -> "Transaction":
         return cls(
-            tid=proto.tid,
+            id=proto.tid,
             status=TransactionStatus.SUCCESS
             if proto.success
             else TransactionStatus.FAILURE,

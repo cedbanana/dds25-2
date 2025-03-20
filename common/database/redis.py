@@ -114,7 +114,11 @@ class RedisClient(DatabaseClient[T]):
     def get(self, id: str, model_class: Type[T]) -> Optional[T]:
         client = self._get_client()
 
-        keys = [self._get_key(id, field.name) for field in fields(model_class)]
+        keys = [
+            self._get_key(id, field.name)
+            for field in fields(model_class)
+            if field.name != "id"
+        ]
         if not keys:
             return None
 
@@ -123,6 +127,11 @@ class RedisClient(DatabaseClient[T]):
 
         converted_data = {"id": id}
         annotations = model_class.__annotations__
+
+        print(values, keys)
+
+        if any(v is None for v in values):
+            return None
 
         for field in fields(model_class):
             field_name = field.name

@@ -156,11 +156,11 @@ async def checkout_bulk(order_id: str):
                 )
                 abort(400, "Error communicating with stock service")
 
-        unpaid = db.compare_and_set(order_id, "paid", False, True)
-
-        if not unpaid:
-            current_app.logger.error("Order already paid: %s", order_id)
-            return Response(f"Order {order_id} already paid", status=200)
+        # unpaid = db.compare_and_set(order_id, "paid", False, True)
+        #
+        # if not unpaid:
+        #     current_app.logger.error("Order already paid: %s", order_id)
+        #     return Response(f"Order {order_id} already paid", status=200)
 
         order = get_order_from_db(order_id)
         items = defaultdict(int)
@@ -239,11 +239,11 @@ async def checkout_individual(order_id: str):
                 abort(400, "Error communicating with stock service")
             current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
 
-    unpaid = db.compare_and_set(order_id, "paid", False, True)
+    # unpaid = db.compare_and_set(order_id, "paid", False, True)
 
-    if not unpaid:
-        current_app.logger.error("Order already paid: %s", order_id)
-        return Response(f"Order {order_id} already paid", status=200)
+    # if not unpaid:
+    #     current_app.logger.error("Order already paid: %s", order_id)
+    #     return Response(f"Order {order_id} already paid", status=200)
 
     async with AsyncStockClient() as stock_client, AsyncPaymentClient() as payment_client:
         order = get_order_from_db(order_id)

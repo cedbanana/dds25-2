@@ -45,10 +45,10 @@ class VibeCheckerTransactionStatus(StreamProcessor):
 
         if transaction.status == TransactionStatus.PENDING:
             logging.info("Transaction %s is still pending", tid)
-            self._stream_producer.push(id, tid=tid)
+            self._stream_producer.push(tid=tid)
             return
 
-        response = self._payment_client.VibeCheckerTransactionStatus(
+        response = self._payment_client.VibeCheckTransactionStatus(
             transaction.to_proto()
         )
 
@@ -70,4 +70,4 @@ class VibeCheckerTransactionStatus(StreamProcessor):
 
 if __name__ == "__main__":
     consumer = db.initialize_stream_processor(VibeCheckerTransactionStatus)
-    consumer.start_workers(CONSUMER_GROUP, NUM_STREAM_CONSUMERS)
+    consumer.start_worker(CONSUMER_GROUP, f"vibe_checker_{STREAM_KEY}_consumer")

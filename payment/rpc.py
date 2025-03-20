@@ -54,6 +54,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             )
             db.save(transaction)
             stream_producer.push(tid=request.tid)
+            logging.info("YEAT")
 
             if not db.lte_decrement(user_id, "credit", request.amount, request.tid):
                 logging.error(
@@ -87,7 +88,8 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             transaction = None
             while transaction is None and count_retries < 10:
                 context.abort(
-                    grpc.StatusCode.NOT_FOUND, f"Transaction: {request.tid} not found, retry!"
+                    grpc.StatusCode.NOT_FOUND,
+                    f"Transaction: {request.tid} not found, retry!",
                 )
 
                 transaction = db.get(request.tid, Transaction)
@@ -104,16 +106,17 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
                     return stale_transaction.to_proto()
 
             # Revert here
-            if request.success == False and transaction.status == TransactionStatus.SUCCESS:
+            if (
+                request.success == False
+                and transaction.status == TransactionStatus.SUCCESS
+            ):
                 try:
                     for k, v in transaction.details.items():
                         db.increment(k, "credit", v)
                 except Exception as e:
                     logging.exception("Error in reverting payment")
                     context.abort(grpc.StatusCode.INTERNAL, str(e))
-                    return common_pb2.TransactionStatus(
-                        tid=request.tid, success=False
-                    )
+                    return common_pb2.TransactionStatus(tid=request.tid, success=False)
 
             # Successful
             return transaction.to_proto()

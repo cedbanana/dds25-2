@@ -52,6 +52,10 @@ class RedisStreamConsumer:
 
     def consume(self, callback: Callable):
         """Continuously consume messages from the stream and pass them to the callback."""
+        logging.error(
+            "Starting consumer %s on stream key %s", self.consumer_name, self.stream_key
+        )
+        print("AAAAAA")
         while True:
             try:
                 # Read messages from the stream
@@ -69,7 +73,7 @@ class RedisStreamConsumer:
                             # Parse the message value as JSON
                             try:
                                 # Pass the data as kwargs to the callback
-                                callback(id, **data)
+                                callback(message_id, **data)
                                 # Acknowledge the message
                                 self.redis_client.xack(
                                     self.stream_key, self.consumer_group, message_id

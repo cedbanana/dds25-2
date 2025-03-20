@@ -39,21 +39,23 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         )
         self._stock_client = StockServiceStub(self._stock_channel)
         self._stream_producer = db.get_stream_producer(STREAM_KEY)
+        logging.info("YEAT2")
 
     def callback(self, id, tid=""):
+        logging.info("YEAT")
         transaction = db.get(tid, Transaction)
 
         if transaction is None:
+            logging.info("Transaction %s is None", tid)
             return
 
         if transaction.status == TransactionStatus.PENDING:
             logging.info("Transaction %s is still pending", tid)
-            self._stream_producer.push(id, tid=tid)
+            print(type(tid))
+            self._stream_producer.push(tid=tid)
             return
 
-        response = self._stock_client.VibeCheckerTransactionStatus(
-            transaction.to_proto()
-        )
+        response = self._stock_client.VibeCheckTransactionStatus(transaction.to_proto())
 
         t_stock = Transaction.from_proto(response)
 
@@ -73,4 +75,4 @@ class VibeCheckerTransactionStatus(StreamProcessor):
 
 if __name__ == "__main__":
     consumer = db.initialize_stream_processor(VibeCheckerTransactionStatus)
-    consumer.start_workers(CONSUMER_GROUP, NUM_STREAM_CONSUMERS)
+    consumer.start_worker(CONSUMER_GROUP, f"vibe_checker_{STREAM_KEY}_consumer")

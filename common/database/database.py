@@ -1,3 +1,4 @@
+from enum import Enum
 import json
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -51,6 +52,8 @@ class DatabaseClient(ABC, Generic[T]):
             return json.loads(value)
         elif get_origin(field_type) is dict:
             return json.loads(value)
+        elif issubclass(field_type, Enum):
+            return field_type(int(value))
         elif field_type is int:
             return int(value)
         elif field_type is float:
