@@ -1,5 +1,108 @@
 # Web-scale Data Management Project Template
 
+## 📖 Introduction
+This project serves as a scalable and distributed data management system.
+
+It is built with a microservices architecture to efficiently handle orders, payments, and inventory management.
+
+## ⚠️ Instructions
+### ‼️ 1. Consistency Test :
+We enhanced the consistency test provided in the benchmark. 
+The initial version did not account for eventual consistency, which we have implemented, as it only checked the immediate final state of the system.
+It also verified only successful transactions, but does not account for failed transactions.
+
+Our system becomes consistent after a while, but the test does not wait for that to happen.
+
+To account for this, we wrote a new consistency test that allows the user to rerun the check for consistency multiple times until the system eventually becomes consistent.
+Our consistency test can be run with the following command:
+`test`
+
+As currently we ensure eventual consistency, you should allow the system to synchronize and retry the test a couple of times (3-5) before concluding that the system is inconsistent.
+
+### 😵 2. What can be killed :
+Not the database.
+Everything except the database.
+
+### 🏗️ 3. Scaling the system for better performance: 
+- Order Service: In ```order-service```, modify the number of replicas by changing the ```replicas``` value in ```deployment```.
+
+- Stock Service: In ```stock-service```, ```stock-rpc```, ```stock-stream``` the number of replicas can be changed by modifying the ```replicas``` value in the ```deployment``` section.
+
+- Payment Service: In ```payment-service```, ```payment-rpc```, ```payment-stream``` the number of replicas can be changed by modifying the ```replicas``` value in the ```deployment``` section.
+
+- Locust: For Locust, the ```worker``` container can be scaled to use multiple replicas by changing the ```replicas``` value in the deployment section.
+
+## 👥 Contributors
+- 🐐 [Yigit Çolakoğlu](https://github.com/arg3t)
+- 🐐 [Andra Alăzăroaie](https://github.com/andra1782)
+- 🐐 [Albert Sandu](https://github.com/albsd)
+- 🐐 [Alexandra Căruțașu](https://github.com/adduta)
+- 🐐 [Adrian Munteanu](https://github.com/cedbanana)
+
+## 🏗️ Core Components
+### 🛒 Order Service
+Coordinates transactions and manages the user shopping cart
+### 💳 Payment Service
+Handles user credit management and payment processing
+### 📦 Stock Service
+Manages inventory tracking and stock adjustments
+### 🔴 Redis (Database)
+Primary database for all services
+### 🔗 gRPC (Server Communication)
+Communication protocol between services
+
+## 🛠️ Implementation Details
+### ⚡ Asynchronous Communication
+- Our project utilizes **Quart (async Flask)** for handling **concurrent requests**
+- Uses **asyncio** for non-blocking I/O operations
+- Improves performance under high load conditions
+
+### 🔄 Communication Protocol
+Services communicate using **gRPC**, which offers several advantages over REST:
+- Binary protocol (more efficient than JSON)
+- Strong typing with Protocol Buffers
+- Bidirectional streaming capabilities
+- Lower latency
+
+### 🔀 Transaction Protocol
+We implemented a **Choreography-based Saga** pattern to manage distributed transactions across the Order, Payment, and Stock microservices.
+
+### 💃 Saga Pattern:
+<table>
+  <tbody>
+    <tr>
+      <th>Order</th>
+      <th>Stock</th>
+      <th>Payment</th>
+    </tr>
+    <tr>
+      <td><ol>
+        <li>sends a request to Stock and Payment to deduct the amount for that order/li>
+        <li>waits for the response from Stock and Payment</li>
+        <li>if both are successful, returns 200</li>
+        <li>if any one of them fails, returns 400</li>
+      </ol></td>
+      <td><ol>
+        <li>verifies product availability</li>
+        <li>if sufficient stock is available, it deducts the items</li>
+        <li>sends response to the Order service with the result of the deduction (success/failure)</li>
+        <li>pushes the transaction id for this operation to the redis stream to be rolled back or committed</li>
+        <li>listens to messages from the Payment service for this transaction, roll back if payment failed</li>
+        <li>continuously process the transaction id stream and poll payment for its status. If payment is down, push back to stream</li>
+      </ol></td>
+      <td><ol>
+        <li>verifies sufficient funds</li>
+        <li>if sufficient funds are available, it deducts the amount</li>
+        <li>sends response to the Order service with the result of the deduction (success/failure)</li>
+        <li>pushes the transaction id for this operation to the redis stream to be rolled back or committed</li>
+        <li>listens to messages from the Stock service for this transaction, roll back if stock failed</li>
+        <li>continuously process the transaction id stream and poll stock for its status. If stock is down, push back to stream</li>
+      </ol></td>
+    </tr>
+  </tbody>
+</table>
+
+
 ```mermaid
 sequenceDiagram
     participant O as Order Service
@@ -20,54 +123,7 @@ sequenceDiagram
     S-->>SS: TransactionStatus (commit/rollback)
 ```
 
-Basic project structure with Python's Flask and Redis. 
-**You are free to use any web framework in any language and any database you like for this project.**
-
-### Project structure
-
-* `env`
-    Folder containing the Redis env variables for the docker-compose deployment
-    
-* `helm-config` 
-   Helm chart values for Redis and ingress-nginx
-        
-* `k8s`
-    Folder containing the kubernetes deployments, apps and services for the ingress, order, payment and stock services.
-    
-* `order`
-    Folder containing the order application logic and dockerfile. 
-    
-* `payment`
-    Folder containing the payment application logic and dockerfile. 
-
-* `stock`
-    Folder containing the stock application logic and dockerfile. 
-
-* `test`
-    Folder containing some basic correctness tests for the entire system. (Feel free to enhance them)
-
-### Deployment types:
-
-#### docker-compose (local development)
-
-After coding the REST endpoint logic run `docker-compose up --build` in the base folder to test if your logic is correct
-(you can use the provided tests in the `\test` folder and change them as you wish). 
-
-***Requirements:*** You need to have docker and docker-compose installed on your machine. 
-
-K8s is also possible, but we do not require it as part of your submission. 
-
-#### minikube (local k8s cluster)
-
-This setup is for local k8s testing to see if your k8s config works before deploying to the cloud. 
-First deploy your database using helm by running the `deploy-charts-minicube.sh` file (in this example the DB is Redis 
-but you can find any database you want in https://artifacthub.io/ and adapt the script). Then adapt the k8s configuration files in the
-`\k8s` folder to mach your system and then run `kubectl apply -f .` in the k8s folder. 
-
-***Requirements:*** You need to have minikube (with ingress enabled) and helm installed on your machine.
-
-#### kubernetes cluster (managed k8s cluster in the cloud)
-
-Similarly to the `minikube` deployment but run the `deploy-charts-cluster.sh` in the helm step to also install an ingress to the cluster. 
-
-***Requirements:*** You need to have access to kubectl of a k8s cluster.
+### Consistency
+to be updated
+### Performance
+to be updated
