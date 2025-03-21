@@ -180,7 +180,6 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         transaction = None
         while transaction is None and count_retries < 10:
             logging.warning(
-                grpc.StatusCode.NOT_FOUND,
                 f"Transaction: {request.tid} not found, retry!",
             )
 
