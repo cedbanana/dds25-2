@@ -39,7 +39,7 @@ class DatabaseClient(ABC, Generic[T]):
         """Serialize a value based on its type"""
         if get_origin(field_type) is list:
             return json.dumps(value)
-        elif get_origin(field_type) is dict:
+        elif field_type is dict:
             return json.dumps(value)
         return str(value)
 
@@ -50,7 +50,7 @@ class DatabaseClient(ABC, Generic[T]):
 
         if get_origin(field_type) is list:
             return json.loads(value)
-        elif get_origin(field_type) is dict:
+        elif field_type is dict:
             return json.loads(value)
         elif issubclass(field_type, Enum):
             return field_type(int(value))

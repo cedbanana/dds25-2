@@ -24,16 +24,12 @@ stream_producer = db.get_stream_producer(STREAM_KEY)
 
 class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
     async def FindItem(self, request, context):
-        try:
-            stock_model = db.get(request.item_id, Stock)
-            if stock_model is None:
-                context.abort(
-                    grpc.StatusCode.NOT_FOUND, f"Item: {request.item_id} not found!"
-                )
-            return stock_model.to_proto()
-        except Exception as e:
-            logging.exception("Error in FindItem")
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+        stock_model = db.get(request.item_id, Stock)
+        if stock_model is None:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND, f"Item: {request.item_id} not found!"
+            )
+        return stock_model.to_proto()
 
     async def AddStock(self, request, context):
         try:
@@ -58,11 +54,22 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             )
         except Exception as e:
             logging.exception("Error in AddStock")
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+            await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     async def RemoveStock(self, request, context):
         try:
             item_id = request.item_id
+
+            status = db.get_attr(request.tid, "status", Transaction)
+
+            if status == TransactionStatus.STALE:
+                logging.error("Payment failed: transaction is stale")
+                return stock_pb2.StockAdjustmentResponse(
+                    status=common_pb2.OperationResponse(
+                        success=False, error="Transaction is stale!"
+                    ),
+                    price=-1,
+                )
 
             transaction = Transaction(
                 request.tid,
@@ -95,7 +102,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             )
         except Exception as e:
             logging.exception("Error in RemoveStock")
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+            await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     async def BulkOrder(self, request, context):
         try:
@@ -136,7 +143,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             )
         except Exception as e:
             logging.exception("Error in RemoveStock")
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+            await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     async def BulkRefund(self, request, context):
         try:
@@ -166,47 +173,63 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             )
         except Exception as e:
             logging.exception("Error in RemoveStock")
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+            await context.abort(grpc.StatusCode.INTERNAL, str(e))
 
     async def VibeCheckTransactionStatus(self, request, context):
+        count_retries = 0
+        transaction = None
+        while transaction is None and count_retries < 10:
+            logging.warning(
+                grpc.StatusCode.NOT_FOUND,
+                f"Transaction: {request.tid} not found, retry!",
+            )
+
+            transaction = db.get(request.tid, Transaction)
+            count_retries += 1
+            await asyncio.sleep(0.1)
+
+        if transaction is None:
+            stale_transaction = Transaction(
+                request.tid,
+                TransactionStatus.STALE,
+            )
+            db.save(stale_transaction)
+            logging.warning(
+                "Transaction %s marked stale, count: %s", request.tid, count_retries
+            )
+            return stale_transaction.to_proto()
+
+        unlocked = db.compare_and_set(request.tid, "locked", False, True)
+
+        if not unlocked:
+            logging.error("VibeCheck %s failed, transaction is locked", request.tid)
+            await context.abort(
+                grpc.StatusCode.FAILED_PRECONDITION,
+                f"Transaction: {request.tid} is locked!",
+            )
+
+        db.delete(transaction)
+        # Revert here
         try:
-            count_retries = 0
-            transaction = None
-            while transaction is None and count_retries < 10:
-                context.abort(
-                    grpc.StatusCode.NOT_FOUND, f"Transaction: {request.tid} not found, retry!"
+            if not request.success and transaction.status == TransactionStatus.SUCCESS:
+                logging.info(
+                    "Transaction %s rolling back due to VibeCheck", request.tid
                 )
-
-                transaction = db.get(request.tid, Transaction)
-                count_retries += 1
-                await asyncio.sleep(0.1)
-
-                stale_transaction = Transaction(
-                    request.tid,
-                    TransactionStatus.STALE,
+                for k, v in transaction.details.items():
+                    db.increment(k, "stock", v)
+            elif transaction.status == TransactionStatus.SUCCESS:
+                logging.info(
+                    "Transaction %s committing thanks to VibeCheck", request.tid
                 )
-
-                if transaction is None:
-                    db.save(stale_transaction)
-                    return stale_transaction.to_proto()
-
-            # Revert here
-            if request.success == False and transaction.status == TransactionStatus.SUCCESS:
-                try:
-                    for k, v in transaction.details.items():
-                        db.increment(k, "stock", v)
-                except Exception as e:
-                    logging.exception("Error in reverting payment")
-                    context.abort(grpc.StatusCode.INTERNAL, str(e))
-                    return common_pb2.TransactionStatus(
-                        tid=request.tid, success=False
-                    )
-
-            # Successful
-            return transaction.to_proto()
+                for k, v in transaction.details.items():
+                    db.decrement(k, "committed_stock", -v)
         except Exception as e:
-            logging.exception("Error in trying to check transaction status.")
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+            logging.exception("Error in reverting stock")
+            await context.abort(grpc.StatusCode.INTERNAL, str(e))
+            return common_pb2.TransactionStatus(tid=request.tid, success=False)
+
+        # Successful
+        return transaction.to_proto()
 
 
 async def serve():

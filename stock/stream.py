@@ -40,32 +40,53 @@ class VibeCheckerTransactionStatus(StreamProcessor):
     def callback(self, id, tid=""):
         transaction = db.get(tid, Transaction)
 
-        if transaction is None:
+        if transaction is None or transaction.status == TransactionStatus.STALE:
+            logging.info("Transaction %s is None | STALE", tid)
+            return
+
+        unlocked = db.compare_and_set(tid, "locked", False, True)
+        if not unlocked:
+            logging.info("Transaction %s is locked, pushing back", tid)
+            self._stream_producer.push(tid=tid)
             return
 
         if transaction.status == TransactionStatus.PENDING:
             logging.info("Transaction %s is still pending", tid)
+
+            # if transaction.pending_count > 10000000000:
+            #     transaction.status = TransactionStatus.FAILURE
+            #     db.save(transaction)
+            #
+            db.increment(tid, "pending_count", 1)
+
             self._stream_producer.push(tid=tid)
+            db.set_attr(tid, "locked", False, Transaction)
             return
 
-        response = self._payment_client.VibeCheckTransactionStatus(
-            transaction.to_proto()
-        )
+        try:
+            response = self._payment_client.VibeCheckTransactionStatus(
+                transaction.to_proto()
+            )
+        except Exception:
+            logging.exception("Error in VibeCheckTransactionStatus")
+            self._stream_producer.push(tid=tid)
+            db.set_attr(tid, "locked", False, Transaction)
+            return
 
         t_payment = Transaction.from_proto(response)
+        db.delete(transaction)
 
-        if t_payment.status == TransactionStatus.SUCCESS:
-            logging.info("Transaction %s succeeded!", tid)
-            db.delete(transaction)
-            return
-
-        logging.error("Transaction %s failed!", tid)
-
-        if transaction.status == TransactionStatus.FAILURE:
+        if (
+            transaction.status == TransactionStatus.SUCCESS
+            and t_payment.status == TransactionStatus.FAILURE
+        ):  # If remote is failed, and we are successful, we need to roll back
+            logging.info("Rolling %s back!", tid)
             for k, v in transaction.details.items():
                 db.increment(k, "stock", v)
-
-        db.delete(transaction)
+        elif transaction.status == TransactionStatus.SUCCESS:
+            logging.info("Transaction %s committing", tid)
+            for k, v in transaction.details.items():
+                db.decrement(k, "committed_stock", -v)
 
 
 if __name__ == "__main__":

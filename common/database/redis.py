@@ -22,6 +22,7 @@ if tonumber(ARGV[1]) <= current then
     redis.call('set', KEYS[1], 2)
     return redis.call('decrby', KEYS[2], ARGV[1])
 end
+redis.call('set', KEYS[1], 1)
 return -1
 """
 
@@ -47,10 +48,10 @@ if all_valid then
     for i, key in ipairs(KEYS) do
         redis.call('decrby', key, ARGV[i])
     end
-    redis.call('set', KEYS[1], 1)
+    redis.call('set', KEYS[1], 2)
     return 1
 else
-    redis.call('set', KEYS[1], 2)
+    redis.call('set', KEYS[1], 1)
 end
 
 return -1
@@ -350,6 +351,7 @@ class RedisClient(DatabaseClient[T]):
         client = self._get_client()
 
         tidk = self._get_key(tid, "status")
+        print(f"tidk: {tidk}")
 
         keys = []
         values = []

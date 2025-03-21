@@ -29,6 +29,15 @@ class RedisStreamProducer:
         # Push the message to the stream
         self.redis_client.xadd(self.stream_key, data, id=id)
 
+    def size(self):
+        """
+        Get the number of entries in the Redis stream.
+
+        Returns:
+            int: The number of entries in the stream.
+        """
+        return self.redis_client.xlen(self.stream_key)
+
 
 class RedisStreamConsumer:
     def __init__(
@@ -77,6 +86,7 @@ class RedisStreamConsumer:
                                 self.redis_client.xack(
                                     self.stream_key, self.consumer_group, message_id
                                 )
+                                self.redis_client.xdel(self.stream_key, message_id)
                             except Exception as e:
                                 logging.exception("Error processing message")
             except Exception as e:

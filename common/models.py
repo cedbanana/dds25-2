@@ -2,12 +2,13 @@ from dataclasses import dataclass, field
 import enum
 from typing import List, Tuple
 from proto import order_pb2, stock_pb2, payment_pb2, common_pb2
+import time
 
 
 @dataclass
 class Order:
     id: str
-    paid: bool
+    paid: int
     items: List[Tuple[str, int]] = field(default_factory=list)
     user_id: str = ""
     total_cost: int = 0
@@ -47,6 +48,7 @@ class Stock:
     id: str
     stock: int
     price: int
+    committed_stock: int = 0
 
     def to_proto(self) -> stock_pb2.Item:
         return stock_pb2.Item(id=self.id, stock=self.stock, price=self.price)
@@ -60,6 +62,7 @@ class Stock:
 class User:
     id: str
     credit: int
+    committed_credit: int = 0
 
     def to_proto(self) -> payment_pb2.User:
         return payment_pb2.User(id=self.id, credit=self.credit)
@@ -84,6 +87,8 @@ class Transaction:
     id: str
     status: TransactionStatus
     details: dict = field(default_factory=dict)
+    created_at: int = field(default_factory=lambda: int(time.time()))
+    locked: bool = False
 
     def to_proto(self) -> common_pb2.TransactionStatus:
         return common_pb2.TransactionStatus(

@@ -2,11 +2,13 @@ from typing import Any
 import uuid
 from flask import Blueprint, jsonify, Response, abort, current_app
 from database import TransactionConfig
-from config import db
+from config import db, STREAM_KEY
 from models import User
 
 payment_blueprint = Blueprint("payment", __name__)
 DB_ERROR_STR = "DB error"
+
+stream = db.get_stream_producer(STREAM_KEY)
 
 
 def get_user_from_db(user_id: str, db=db) -> User:
@@ -36,7 +38,7 @@ def get_user_field_from_db(user_id: str, field: str, db=db) -> Any:
 @payment_blueprint.post("/create_user")
 def create_user():
     key = str(uuid.uuid4())
-    user = User(id=key, credit=0)
+    user = User(id=key, credit=0, committed_credit=0)
     try:
         db.save(user)
         current_app.logger.info("Created new user: %s", key)
@@ -53,7 +55,9 @@ def batch_init_users(n: int, starting_money: int):
         starting_money = int(starting_money)
         users = []
         for i in range(n):
-            user = User(id=str(i), credit=starting_money)
+            user = User(
+                id=str(i), credit=starting_money, committed_credit=starting_money
+            )
             users.append(user)
         db.save_all(users)
         current_app.logger.info("Batch init for users successful with %s users", n)
@@ -69,11 +73,17 @@ def find_user(user_id: str):
     return jsonify({"user_id": user_entry.id, "credit": user_entry.credit})
 
 
+@payment_blueprint.get("/streamsize")
+def streamsize():
+    return jsonify({"size": stream.size()})
+
+
 @payment_blueprint.post("/add_funds/<user_id>/<int:amount>")
 def add_credit(user_id: str, amount: int):
     user_entry = get_user_from_db(user_id)
     try:
         user_entry.credit = db.increment(user_id, "credit", amount)
+        user_entry.credit = db.increment(user_id, "committed_credit", amount)
         current_app.logger.info(
             "Added funds to user %s; new credit: %s", user_id, user_entry.credit
         )
