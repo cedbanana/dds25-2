@@ -8,14 +8,14 @@ from config import (
 )
 import logging
 
-import grpc
-
+from utils import randsleep
 import grpc.aio
 import grpc
 from proto.stock_pb2_grpc import StockServiceStub
 
 from models import Transaction, TransactionStatus
-
+import time
+import random
 import sys
 
 root = logging.getLogger()
@@ -50,6 +50,7 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         unlocked = db.compare_and_set(tid, "locked", False, True)
         if not unlocked:
             logging.info("Transaction %s is locked, pushing back", tid)
+            randsleep()
             self._stream_producer.push(tid=tid)
             return
 
@@ -61,9 +62,10 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             #     db.save(transaction)
             #
             db.increment(tid, "pending_count", 1)
-
-            self._stream_producer.push(tid=tid)
             db.set_attr(tid, "locked", False, Transaction)
+            randsleep()
+            self._stream_producer.push(tid=tid)
+
             return
 
         try:
@@ -72,8 +74,9 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             )
         except Exception as e:
             logging.exception("Error in VibeCheckTransactionStatus")
-            self._stream_producer.push(tid=tid)
             db.set_attr(tid, "locked", False, Transaction)
+            randsleep()
+            self._stream_producer.push(tid=tid)
             return
 
         t_stock = Transaction.from_proto(response)

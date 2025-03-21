@@ -112,7 +112,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 4 # stream
+      replicas: 8 # stream
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
 
@@ -172,7 +172,7 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 4 # stream
+      replicas: 8 # stream
 
   ## Database Solutions
   redis-payment:

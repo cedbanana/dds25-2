@@ -10,6 +10,7 @@ import logging
 import json
 
 import grpc
+from utils import randsleep
 from proto.payment_pb2_grpc import PaymentServiceStub
 from models import Transaction, TransactionStatus
 
@@ -47,6 +48,7 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         unlocked = db.compare_and_set(tid, "locked", False, True)
         if not unlocked:
             logging.info("Transaction %s is locked, pushing back", tid)
+            randsleep()
             self._stream_producer.push(tid=tid)
             return
 
@@ -58,9 +60,10 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             #     db.save(transaction)
             #
             db.increment(tid, "pending_count", 1)
-
-            self._stream_producer.push(tid=tid)
             db.set_attr(tid, "locked", False, Transaction)
+            randsleep()
+            self._stream_producer.push(tid=tid)
+
             return
 
         try:
@@ -69,8 +72,10 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             )
         except Exception:
             logging.exception("Error in VibeCheckTransactionStatus")
-            self._stream_producer.push(tid=tid)
             db.set_attr(tid, "locked", False, Transaction)
+            randsleep()
+            self._stream_producer.push(tid=tid)
+
             return
 
         t_payment = Transaction.from_proto(response)
