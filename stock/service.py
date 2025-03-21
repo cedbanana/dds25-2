@@ -1,11 +1,12 @@
 import uuid
 from flask import Blueprint, jsonify, abort, Response, current_app
-from config import db
+from config import db, STREAM_KEY
 from models import Stock
 from database import TransactionConfig
 
 stock_blueprint = Blueprint("stock", __name__)
 DB_ERROR_STR = "DB error"
+stream = db.get_stream_producer(STREAM_KEY)
 
 
 def get_item_from_db(id: str, db=db) -> Stock:
@@ -36,7 +37,8 @@ def get_item_field_from_db(id: str, field: str, db=db) -> Stock:
 def create_item(price: int):
     key = str(uuid.uuid4())
     current_app.logger.info("Creating new item with id: %s", key)
-    stock_item = Stock(id=key, stock=0, price=int(price), reserved=0)
+    stock_item = Stock(id=key, stock=0, committed_stock=0, price=int(price))
+
     try:
         db.save(stock_item)
         current_app.logger.info("Item created: %s", key)
@@ -54,7 +56,12 @@ def batch_init_items(n: int, starting_stock: int, item_price: int):
         item_price = int(item_price)
         items = []
         for i in range(n):
-            stock_item = Stock(id=str(i), stock=starting_stock, price=item_price)
+            stock_item = Stock(
+                id=str(i),
+                stock=starting_stock,
+                committed_stock=starting_stock,
+                price=item_price,
+            )
             items.append(stock_item)
 
         db.save_all(items)
@@ -71,12 +78,18 @@ def find_item(id: str):
     return jsonify({"stock": item_entry.stock, "price": item_entry.price})
 
 
+@stock_blueprint.get("/streamsize")
+def streamsize():
+    return jsonify({"size": stream.size()})
+
+
 @stock_blueprint.post("/add/<id>/<int:amount>")
 def add_stock(id: str, amount: int):
     item_entry = get_item_from_db(id)
 
     try:
         item_entry.stock = db.increment(id, "stock", amount)
+        item_entry.stock = db.increment(id, "committed_stock", amount)
         current_app.logger.info(
             "Added %s to item %s; new stock: %s", amount, id, item_entry.stock
         )

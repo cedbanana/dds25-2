@@ -11,6 +11,7 @@ service StockService {
   rpc RemoveStock(StockAdjustment) returns (StockAdjustmentResponse);
   rpc BulkOrder(BulkStockAdjustment) returns (BulkStockAdjustmentResponse);
   rpc BulkRefund(BulkStockAdjustment) returns (BulkStockAdjustmentResponse);
+  rpc VibeCheckTransactionStatus(common.TransactionStatus) returns (common.TransactionStatus);
 }
 
 message Item {
@@ -35,6 +36,7 @@ message ItemRequest {
 message StockAdjustment {
   string item_id = 1;
   int32 quantity = 2;
+  string tid = 3;
 }
 
 message StockAdjustmentResponse {
@@ -45,6 +47,7 @@ message StockAdjustmentResponse {
 
 message BulkStockAdjustment {
   repeated Item items = 1;
+  string tid = 2;
 }
 
 message BulkStockAdjustmentResponse {

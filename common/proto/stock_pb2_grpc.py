@@ -6,7 +6,7 @@ import warnings
 from proto import common_pb2 as proto_dot_common__pb2
 from proto import stock_pb2 as proto_dot_stock__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.67.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -60,6 +60,11 @@ class StockServiceStub(object):
                 request_serializer=proto_dot_stock__pb2.BulkStockAdjustment.SerializeToString,
                 response_deserializer=proto_dot_stock__pb2.BulkStockAdjustmentResponse.FromString,
                 _registered_method=True)
+        self.VibeCheckTransactionStatus = channel.unary_unary(
+                '/stock.StockService/VibeCheckTransactionStatus',
+                request_serializer=proto_dot_common__pb2.TransactionStatus.SerializeToString,
+                response_deserializer=proto_dot_common__pb2.TransactionStatus.FromString,
+                _registered_method=True)
 
 
 class StockServiceServicer(object):
@@ -96,6 +101,12 @@ class StockServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def VibeCheckTransactionStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_StockServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -123,6 +134,11 @@ def add_StockServiceServicer_to_server(servicer, server):
                     servicer.BulkRefund,
                     request_deserializer=proto_dot_stock__pb2.BulkStockAdjustment.FromString,
                     response_serializer=proto_dot_stock__pb2.BulkStockAdjustmentResponse.SerializeToString,
+            ),
+            'VibeCheckTransactionStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.VibeCheckTransactionStatus,
+                    request_deserializer=proto_dot_common__pb2.TransactionStatus.FromString,
+                    response_serializer=proto_dot_common__pb2.TransactionStatus.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -260,6 +276,33 @@ class StockService(object):
             '/stock.StockService/BulkRefund',
             proto_dot_stock__pb2.BulkStockAdjustment.SerializeToString,
             proto_dot_stock__pb2.BulkStockAdjustmentResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def VibeCheckTransactionStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/stock.StockService/VibeCheckTransactionStatus',
+            proto_dot_common__pb2.TransactionStatus.SerializeToString,
+            proto_dot_common__pb2.TransactionStatus.FromString,
             options,
             channel_credentials,
             insecure,

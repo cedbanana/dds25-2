@@ -4,10 +4,6 @@ import time
 import logging
 import atexit
 
-# Add common to path if it is not already there
-if not os.path.isdir("common"):
-    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "common"))
-
 from quart import Quart, request
 from config import db, PROFILING
 from service import order_blueprint

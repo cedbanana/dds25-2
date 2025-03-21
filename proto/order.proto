@@ -6,7 +6,7 @@ import "proto/stock.proto";
 
 message Order {
   string id = 1;
-  bool paid = 2;
+  int32 paid = 2;
   repeated stock.Item items = 3;
   string user_id = 4;
   int32 total_cost = 5;
