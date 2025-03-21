@@ -70,7 +70,7 @@ def batch_init_users(n: int, starting_money: int):
 @payment_blueprint.get("/find_user/<user_id>")
 def find_user(user_id: str):
     user_entry = get_user_from_db(user_id)
-    return jsonify({"user_id": user_entry.id, "credit": user_entry.credit})
+    return jsonify({"user_id": user_entry.id, "credit": user_entry.committed_credit})
 
 
 @payment_blueprint.get("/streamsize")

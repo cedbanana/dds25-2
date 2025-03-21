@@ -6,8 +6,10 @@ from config import STREAM_KEY, db
 from models import User, Transaction, TransactionStatus
 from proto import payment_pb2, payment_pb2_grpc, common_pb2
 import asyncio
-
 import sys
+import requests
+
+ORDER_URL = "http://gateway:8000/orders"
 
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
@@ -124,13 +126,25 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
                     "Transaction %s committing thanks to VibeCheck", request.tid
                 )
                 for k, v in transaction.details.items():
-                    db.decrement(k, "committed_credit", -v)
+                    db.decrement(k, "committed_credit", v)
+                commit_order(request.tid)
         except Exception as e:
             logging.exception("Error in reverting payment")
             await context.abort(grpc.StatusCode.INTERNAL, str(e))
             return common_pb2.TransactionStatus(tid=request.tid, success=False)
 
         return transaction.to_proto()
+
+
+def commit_order(tid: str):
+    url = f"{ORDER_URL}/commit_checkout/{tid}"
+    try:
+        response = requests.post(url)
+        response.raise_for_status()
+        logging.info(f"Sent request to commit order for transaction {tid}, url {url}.")
+        return response.text
+    except Exception as e:
+        logging.info(f"Failed to commit order for transaction {tid}: {e}.")
 
 
 async def serve():

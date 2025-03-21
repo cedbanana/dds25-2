@@ -75,7 +75,7 @@ def batch_init_items(n: int, starting_stock: int, item_price: int):
 @stock_blueprint.get("/find/<id>")
 def find_item(id: str):
     item_entry = get_item_from_db(id)
-    return jsonify({"stock": item_entry.stock, "price": item_entry.price})
+    return jsonify({"stock": item_entry.committed_stock, "price": item_entry.price})
 
 
 @stock_blueprint.get("/streamsize")
