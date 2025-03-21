@@ -143,7 +143,7 @@ class RedisClient(DatabaseClient[T]):
                     converted_data[field_name] = field.default
                 elif field.default_factory is not MISSING:
                     converted_data[field_name] = field.default_factory()
-                continue
+                return None
 
             converted_data[field_name] = self._deserialize_value(
                 value, annotations[field_name]

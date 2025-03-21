@@ -38,6 +38,7 @@ def create_item(price: int):
     key = str(uuid.uuid4())
     current_app.logger.info("Creating new item with id: %s", key)
     stock_item = Stock(id=key, stock=0, committed_stock=0, price=int(price))
+
     try:
         db.save(stock_item)
         current_app.logger.info("Item created: %s", key)

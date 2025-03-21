@@ -18,6 +18,7 @@ message Item {
   string id = 1;
   int32 stock = 2;
   int32 price = 3;
+  int32 reserved = 4;
 }
 
 message CreateItemRequest {
