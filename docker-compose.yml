@@ -32,7 +32,7 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 4
+      replicas: 7
     volumes:
       - './order/profiles:/home/flask-app/profiles'
     ulimits:
@@ -72,7 +72,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 3 # rpc
+      replicas: 4 # rpc
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
     ulimits:
@@ -130,7 +130,7 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 3 # rpc
+      replicas: 4 # rpc
 
   payment-stream:
     build:
@@ -181,7 +181,7 @@ services:
       - ./tests:/mnt/locust
     command: -f /mnt/locust/stress/locustfile.py --worker --master-host master
     deploy:
-      replicas: 2
+      replicas: 3
     ulimits:
       nofile:
         soft: "65536"
