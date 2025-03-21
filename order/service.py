@@ -7,6 +7,8 @@ from collections import defaultdict
 from quart import Blueprint, jsonify, abort, Response, current_app
 from config import db, AsyncPaymentClient, AsyncStockClient
 from models import Order, Stock
+from redis.exceptions import WatchError
+from database import TransactionConfig
 from proto.payment_pb2 import PaymentRequest
 from proto.stock_pb2 import ItemRequest, StockAdjustment, BulkStockAdjustment
 
@@ -75,38 +77,42 @@ async def find_order(order_id: str):
 @order_blueprint.post("/addItem/<order_id>/<item_id>/<quantity>")
 async def add_item(order_id: str, item_id: str, quantity: int):
     async with AsyncStockClient() as stock_client:
-        items = get_order_field_from_db(order_id, "items")
+        
+        with db.transaction(
+            TransactionConfig(begin={"watch": [(order_id, "items"), (order_id, "total_cost")]})
+            ) as transaction:
+            
+            items = get_order_field_from_db(order_id, "items")
 
-        try:
-            item_response = await stock_client.FindItem(ItemRequest(item_id=item_id))
-        except Exception as e:
-            current_app.logger.exception(
-                "Error calling StockService for item %s", item_id
+            try:
+                item_response = await stock_client.FindItem(ItemRequest(item_id=item_id))
+            except Exception as e:
+                current_app.logger.exception(
+                    "Error calling StockService for item %s", item_id
+                )
+                abort(400, "Error communicating with stock service")
+            if not item_response.id:
+                current_app.logger.error("Item not found: %s", item_id)
+                abort(400, f"Item {item_id} not found")
+
+            # Append a tuple (item_id, quantity) to the order.
+            items.append(f"{item_id}:{int(quantity)}")
+
+            try:
+                transaction.increment(order_id, "total_cost", item_response.price)
+                transaction.set_attr(order_id, "items", items, Order)
+                current_app.logger.info(
+                    "Added item %s (qty %s) to order %s", item_id, quantity, order_id
+                )
+            except WatchError as watch_err: 
+                current_app.logger.exception("Watch error 2024: %s", str(watch_err))
+                return await add_item(order_id = order_id, item_id = item_id, quantity = quantity)
+            except Exception as e:
+                current_app.logger.exception("Failed to update order: %s", order_id)
+                abort(400, DB_ERROR_STR)
+            return Response(
+                f"Item {item_id} added. Total item count: {len(items)}", status=200
             )
-            abort(400, "Error communicating with stock service")
-        if not item_response.id:
-            current_app.logger.error("Item not found: %s", item_id)
-            abort(400, f"Item {item_id} not found")
-
-        order_total_cost = get_order_field_from_db(order_id, "total_cost")
-
-        # Append a tuple (item_id, quantity) to the order.
-        items.append(f"{item_id}:{int(quantity)}")
-
-        try:
-            db.set_attr(
-                order_id, "total_cost", order_total_cost + item_response.price, Order
-            )
-            db.set_attr(order_id, "items", items, Order)
-            current_app.logger.info(
-                "Added item %s (qty %s) to order %s", item_id, quantity, order_id
-            )
-        except Exception as e:
-            current_app.logger.exception("Failed to update order: %s", order_id)
-            abort(400, DB_ERROR_STR)
-        return Response(
-            f"Item {item_id} added. Total item count: {len(items)}", status=200
-        )
 
 
 @order_blueprint.post("/batch_init/<n>/<n_items>/<n_users>/<item_price>")
