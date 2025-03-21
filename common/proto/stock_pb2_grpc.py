@@ -6,7 +6,7 @@ import warnings
 from proto import common_pb2 as proto_dot_common__pb2
 from proto import stock_pb2 as proto_dot_stock__pb2
 
-GRPC_GENERATED_VERSION = '1.67.1'
+GRPC_GENERATED_VERSION = '1.70.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
