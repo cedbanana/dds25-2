@@ -6,7 +6,7 @@ import uuid
 from collections import defaultdict
 from quart import Blueprint, jsonify, abort, Response, current_app
 from config import db, AsyncPaymentClient, AsyncStockClient
-from models import Order, Stock
+from models import Order, Stock, Transaction, TransactionStatus
 from redis.exceptions import WatchError
 from database import TransactionConfig
 from proto.payment_pb2 import PaymentRequest
@@ -168,6 +168,20 @@ async def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str)
     current_app.logger.info(f"Successfully initialized {n} random orders")
     return jsonify({"msg": "Batch init for orders successful"})
 
+@order_blueprint.post("/commit_checkout/<tid>")
+async def commit_checkout_individual(tid: str):
+    current_app.logger.info("Commiting order for transaction {tid}.")
+    try:
+        transaction = db.get(tid, Transaction)
+    except Exception as e:
+        current_app.logger.error(f"Error fetching transaction from database: {e}")
+    if transaction is None:
+        current_app.logger.error(f"No transaction: {e}")
+    order_id = transaction.details.get("order_id")
+    db.increment(order_id, "paid", 1)
+    # db.delete(transaction)
+    current_app.logger.info("Checkout successful for order %s.", order_id)
+    return Response("Checkout successful", status=200)
 
 # Does individual stock adjustments
 @order_blueprint.post("/checkout/<order_id>")
@@ -191,6 +205,12 @@ async def checkout_individual(order_id: str):
         order = get_order_from_db(order_id)
         items = defaultdict(int)
         tid = str(uuid.uuid4())
+        transaction = Transaction(
+            tid,
+            TransactionStatus.PENDING,
+            {"order_id": order_id},
+        )
+        db.save(transaction)
 
         for item in order.items:
             item_id, qty = item.split(":")
@@ -241,7 +261,6 @@ async def checkout_individual(order_id: str):
             )
             abort(400, "Insufficient stock for some items")
 
-    db.increment(order_id, "paid", 1)  # Increment the number of times it is paid
     current_app.logger.info("Checkout successful for order %s.", order_id)
     return Response("Checkout successful", status=200)
 
