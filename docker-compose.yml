@@ -1,19 +1,12 @@
 version: "3"
 services:
-  # Traefik configuration remains the same
   gateway:
-    image: traefik:v2.5
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:8000"
-      - "--api.dashboard=false"
-      - "--serversTransport.maxIdleConnsPerHost=30000"
+    image: envoyproxy/envoy:dev-11bfcd6dc47975ae4f05a512ec382a91735fde73
     ports:
       - "8000:8000"
       - "8080:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
     depends_on:
       - order-service
       - stock-service
@@ -32,7 +25,6 @@ services:
     env_file:
       - env/order_redis.env
     environment: &dbenv
-      PYTHONUNBUFFERED: 1
       DB_TYPE: redis
       PROFILING: false
     depends_on:
@@ -40,15 +32,9 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 3
+      replicas: 4
     volumes:
       - './order/profiles:/home/flask-app/profiles'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.order.rule=PathPrefix(`/orders/`)"
-      - "traefik.http.middlewares.order-stripprefix.stripprefix.prefixes=/orders"
-      - "traefik.http.routers.order.middlewares=order-stripprefix"
-      - "traefik.http.services.order.loadbalancer.server.port=5000"
     ulimits:
       nofile:
         soft: "65536"
@@ -69,12 +55,6 @@ services:
       replicas: 1
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.stock.rule=PathPrefix(`/stock/`)"
-      - "traefik.http.middlewares.stock-stripprefix.stripprefix.prefixes=/stock"
-      - "traefik.http.routers.stock.middlewares=stock-stripprefix"
-      - "traefik.http.services.stock.loadbalancer.server.port=5000"
     ulimits:
       nofile:
         soft: "65536"
@@ -92,7 +72,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 2
+      replicas: 3 # rpc
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
     ulimits:
@@ -112,7 +92,7 @@ services:
     depends_on:
       - redis-stock
     deploy:
-      replicas: 8 # stream
+      replicas: 3 # stream
     volumes:
       - './stock/profiles:/home/flask-app/profiles'
 
@@ -131,12 +111,6 @@ services:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
       replicas: 1
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.payment.rule=PathPrefix(`/payment/`)"
-      - "traefik.http.middlewares.payment-stripprefix.stripprefix.prefixes=/payment"
-      - "traefik.http.routers.payment.middlewares=payment-stripprefix"
-      - "traefik.http.services.payment.loadbalancer.server.port=5000"
     ulimits:
       nofile:
         soft: "65536"
@@ -156,7 +130,7 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 2
+      replicas: 3 # rpc
 
   payment-stream:
     build:
@@ -172,7 +146,7 @@ services:
     volumes:
       - './payment/profiles:/home/flask-app/profiles'
     deploy:
-      replicas: 8 # stream
+      replicas: 3 # stream
 
   ## Database Solutions
   redis-payment:
@@ -193,7 +167,7 @@ services:
       context: .
       dockerfile: Dockerfile.locust
     ports:
-     - "8089:8089"
+      - "8089:8089"
     volumes:
       - ./tests:/mnt/locust
     command: -f /mnt/locust/stress/locustfile.py --master -H http://master:8089
@@ -207,7 +181,7 @@ services:
       - ./tests:/mnt/locust
     command: -f /mnt/locust/stress/locustfile.py --worker --master-host master
     deploy:
-      replicas: 1
+      replicas: 2
     ulimits:
       nofile:
         soft: "65536"

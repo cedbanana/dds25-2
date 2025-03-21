@@ -110,19 +110,17 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
     async def BulkOrder(self, request, context):
         try:
             items = request.items
-            cost = 0
 
-            # Is this really necessary?
-            prices = db.m_get_attr([item.id for item in items], "price", Stock)
-            if prices is None:
-                return stock_pb2.BulkStockAdjustmentResponse(
+            status = db.get_attr(request.tid, "status", Transaction)
+
+            if status == TransactionStatus.STALE:
+                logging.error("Payment failed: transaction is stale")
+                return stock_pb2.StockAdjustmentResponse(
                     status=common_pb2.OperationResponse(
-                        success=False, error="Item not found!"
+                        success=False, error="Transaction is stale!"
                     ),
-                    total_cost=-1,
+                    price=-1,
                 )
-
-            cost = sum([prices[item.id] * item.stock for item in items])
 
             transaction = Transaction(
                 request.tid,
@@ -132,7 +130,9 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             db.save(transaction)
             stream_producer.push(tid=request.tid)
 
-            if not db.m_gte_decrement({item.id: item.stock for item in items}, "stock"):
+            if not db.m_gte_decrement(
+                {item.id: item.stock for item in items}, "stock", request.tid
+            ):
                 logging.error("Insufficient stock for items")
                 return stock_pb2.BulkStockAdjustmentResponse(
                     status=common_pb2.OperationResponse(
@@ -142,7 +142,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 )
 
             return stock_pb2.BulkStockAdjustmentResponse(
-                status=common_pb2.OperationResponse(success=True), total_cost=cost
+                status=common_pb2.OperationResponse(success=True), total_cost=0
             )
         except Exception as e:
             logging.exception("Error in RemoveStock")
@@ -225,7 +225,6 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                 )
                 for k, v in transaction.details.items():
                     db.decrement(k, "committed_stock", v)
-                commit_order(request.tid)
         except Exception as e:
             logging.exception("Error in reverting stock")
             await context.abort(grpc.StatusCode.INTERNAL, str(e))
@@ -233,17 +232,6 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
         # Successful
         return transaction.to_proto()
-
-
-def commit_order(tid: str):
-    url = f"{ORDER_URL}/commit_checkout/{tid}"
-    try:
-        response = requests.post(url)
-        response.raise_for_status()
-        logging.info(f"Sent request to commit order for transaction {tid}.")
-        return response.text
-    except Exception as e:
-        logging.info(f"Failed to commit order for transaction {tid}: {e}.")
 
 
 async def serve():
