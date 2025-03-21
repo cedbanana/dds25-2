@@ -1,5 +1,25 @@
 # Web-scale Data Management Project Template
 
+```mermaid
+sequenceDiagram
+    participant O as Order Service
+    participant P as Payment Service
+    participant S as Stock Service
+    participant PS as Payment Stream
+    participant SS as Stock Stream
+
+    O->>P: ProcessPayment(PaymentRequest, tid)
+    O->>S: RemoveStock(StockAdjustment, tid)
+    P-->>O: PaymentResponse(success/failure)
+    S-->>O: StockResponse(success/failure)
+    P->>PS: Push transaction message
+    S->>SS: Push transaction message
+    PS->>P: VibeCheckTransactionStatus (poll)
+    SS->>S: VibeCheckTransactionStatus (poll)
+    P-->>PS: TransactionStatus (commit/rollback)
+    S-->>SS: TransactionStatus (commit/rollback)
+```
+
 Basic project structure with Python's Flask and Redis. 
 **You are free to use any web framework in any language and any database you like for this project.**
 

@@ -189,7 +189,9 @@ services:
 
   # Locust for testing
   master:
-    image: locustio/locust
+    build:
+      context: .
+      dockerfile: Dockerfile.locust
     ports:
      - "8089:8089"
     volumes:
@@ -197,6 +199,9 @@ services:
     command: -f /mnt/locust/stress/locustfile.py --master -H http://master:8089
 
   worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.locust
     image: locustio/locust
     volumes:
       - ./tests:/mnt/locust
