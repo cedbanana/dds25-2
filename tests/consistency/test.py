@@ -149,7 +149,8 @@ async def main():
         checkout_results = await get_final_order_statuses(orders)
         # Verify if any money or stock was lost, and print streamsize info.
         consistent = await verify_consistency(checkout_results, user_ids, item_ids)
-        input("--> Press Enter to re-check consistency...")
+        if not consistent:
+            input("--> Press Enter to re-check consistency...")
 
 
 if __name__ == "__main__":
