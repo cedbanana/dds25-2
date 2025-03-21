@@ -93,7 +93,7 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         elif transaction.status == TransactionStatus.SUCCESS:
             logging.info("Transaction %s is committing", tid)
             for k, v in transaction.details.items():
-                db.decrement(k, "committed_credit", -v)
+                db.decrement(k, "committed_credit", v)
 
 
 if __name__ == "__main__":

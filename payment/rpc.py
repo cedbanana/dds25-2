@@ -126,7 +126,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
                     "Transaction %s committing thanks to VibeCheck", request.tid
                 )
                 for k, v in transaction.details.items():
-                    db.decrement(k, "committed_credit", -v)
+                    db.decrement(k, "committed_credit", v)
                 commit_order(request.tid)
         except Exception as e:
             logging.exception("Error in reverting payment")
@@ -134,6 +134,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             return common_pb2.TransactionStatus(tid=request.tid, success=False)
 
         return transaction.to_proto()
+
 
 def commit_order(tid: str):
     url = f"{ORDER_URL}/commit_checkout/{tid}"
@@ -144,6 +145,7 @@ def commit_order(tid: str):
         return response.text
     except Exception as e:
         logging.info(f"Failed to commit order for transaction {tid}: {e}.")
+
 
 async def serve():
     print("Starting gRPC Payment Service")

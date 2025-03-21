@@ -224,7 +224,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
                     "Transaction %s committing thanks to VibeCheck", request.tid
                 )
                 for k, v in transaction.details.items():
-                    db.decrement(k, "committed_stock", -v)
+                    db.decrement(k, "committed_stock", v)
                 commit_order(request.tid)
         except Exception as e:
             logging.exception("Error in reverting stock")
@@ -233,6 +233,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
         # Successful
         return transaction.to_proto()
+
 
 def commit_order(tid: str):
     url = f"{ORDER_URL}/commit_checkout/{tid}"
@@ -243,6 +244,7 @@ def commit_order(tid: str):
         return response.text
     except Exception as e:
         logging.info(f"Failed to commit order for transaction {tid}: {e}.")
+
 
 async def serve():
     print("Starting gRPC Stock Service")
