@@ -84,7 +84,16 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             response = self._stock_client.VibeCheckTransactionStatus(
                 transaction.to_proto()
             )
-        except Exception as e:
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.FAILED_PRECONDITION:
+                logging.warning("Transaction %s locked remotely", tid)
+            else:
+                logging.exception("Error in VibeCheckTransactionStatus")
+            db.set_attr(tid, "locked", False, Transaction)
+            randsleep()
+            self._stream_producer.push(tid=tid)
+            return
+        except Exception:
             logging.exception("Error in VibeCheckTransactionStatus")
             db.set_attr(tid, "locked", False, Transaction)
             randsleep()
