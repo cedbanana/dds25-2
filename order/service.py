@@ -3,6 +3,7 @@ import random
 import uuid
 import asyncio
 import uuid
+from time import perf_counter
 from collections import defaultdict
 from quart import Blueprint, jsonify, abort, Response, current_app
 from config import db, AsyncPaymentClient, AsyncStockClient
@@ -77,15 +78,17 @@ async def find_order(order_id: str):
 @order_blueprint.post("/addItem/<order_id>/<item_id>/<quantity>")
 async def add_item(order_id: str, item_id: str, quantity: int):
     async with AsyncStockClient() as stock_client:
-        
         with db.transaction(
-            TransactionConfig(begin={"watch": [(order_id, "items"), (order_id, "total_cost")]})
-            ) as transaction:
-            
+            TransactionConfig(
+                begin={"watch": [(order_id, "items"), (order_id, "total_cost")]}
+            )
+        ) as transaction:
             items = get_order_field_from_db(order_id, "items")
 
             try:
-                item_response = await stock_client.FindItem(ItemRequest(item_id=item_id))
+                item_response = await stock_client.FindItem(
+                    ItemRequest(item_id=item_id)
+                )
             except Exception as e:
                 current_app.logger.exception(
                     "Error calling StockService for item %s", item_id
@@ -104,9 +107,11 @@ async def add_item(order_id: str, item_id: str, quantity: int):
                 current_app.logger.info(
                     "Added item %s (qty %s) to order %s", item_id, quantity, order_id
                 )
-            except WatchError as watch_err: 
+            except WatchError as watch_err:
                 current_app.logger.exception("Watch error 2024: %s", str(watch_err))
-                return await add_item(order_id = order_id, item_id = item_id, quantity = quantity)
+                return await add_item(
+                    order_id=order_id, item_id=item_id, quantity=quantity
+                )
             except Exception as e:
                 current_app.logger.exception("Failed to update order: %s", order_id)
                 abort(400, DB_ERROR_STR)
@@ -168,6 +173,7 @@ async def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str)
     current_app.logger.info(f"Successfully initialized {n} random orders")
     return jsonify({"msg": "Batch init for orders successful"})
 
+
 @order_blueprint.post("/commit_checkout/<tid>")
 async def commit_checkout_individual(tid: str):
     current_app.logger.info("Commiting order for transaction {tid}.")
@@ -176,16 +182,19 @@ async def commit_checkout_individual(tid: str):
     except Exception as e:
         current_app.logger.error(f"Error fetching transaction from database: {e}")
     if transaction is None:
-        current_app.logger.error(f"No transaction: {e}")
+        current_app.logger.error(f"No transaction: {tid}")
     order_id = transaction.details.get("order_id")
     db.increment(order_id, "paid", 1)
     # db.delete(transaction)
-    current_app.logger.info("Checkout successful for order %s.", order_id)
-    return Response("Checkout successful", status=200)
+    current_app.logger.info("Commit successful for order %s.", order_id)
+    return Response("Commit successful", status=200)
+
 
 # Does individual stock adjustments
-@order_blueprint.post("/checkout/<order_id>")
+# @order_blueprint.post("/checkout/<order_id>")
 async def checkout_individual(order_id: str):
+    t0 = perf_counter()
+
     async def revert_items(items):
         for item_id, qty in items.items():
             try:
@@ -201,8 +210,12 @@ async def checkout_individual(order_id: str):
                 abort(400, "Error communicating with stock service")
             current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
 
+    t1 = perf_counter()
     async with AsyncStockClient() as stock_client, AsyncPaymentClient() as payment_client:
+        t2 = perf_counter()
         order = get_order_from_db(order_id)
+        t3 = perf_counter()
+
         items = defaultdict(int)
         tid = str(uuid.uuid4())
         transaction = Transaction(
@@ -216,7 +229,7 @@ async def checkout_individual(order_id: str):
             item_id, qty = item.split(":")
             items[item_id] += int(qty)
 
-        # Process payment.
+        t4 = perf_counter()
 
         stock_ids = []
         stock_futures = []
@@ -234,8 +247,12 @@ async def checkout_individual(order_id: str):
         )
 
         stock_tasks = asyncio.gather(*stock_futures)
+
+        t5 = perf_counter()
         payment_response = await payment_rpc
+        t6 = perf_counter()
         stock_responses = await stock_tasks
+        t7 = perf_counter()
 
         deducted_items = {}
 
@@ -261,33 +278,54 @@ async def checkout_individual(order_id: str):
             )
             abort(400, "Insufficient stock for some items")
 
-    current_app.logger.info("Checkout successful for order %s.", order_id)
+    t8 = perf_counter()
+
+    current_app.logger.info(
+        "Checkout successful for order %s. Timings (s): setup=%.4f, db=%.4f, prep=%.4f, payment=%.4f, stock=%.4f, total=%.4f",
+        order_id,
+        t2 - t1,  # Client setup
+        t3 - t2,  # DB fetch
+        t5 - t3,  # Preparation
+        t6 - t5,  # Payment
+        t7 - t6,  # Stock deduction
+        t8 - t0,  # Total
+    )
     return Response("Checkout successful", status=200)
 
 
-# Uses bulk stock adjustments
-# (Uncomment to use this endpoint)
-# @order_blueprint.post("/checkout/<order_id>")
+@order_blueprint.post("/checkout/<order_id>")
 async def checkout_bulk(order_id: str):
-    async with AsyncStockClient() as stock_client, AsyncPaymentClient() as payment_client:
+    t0 = perf_counter()
 
-        async def revert_items(items):
+    async def revert_items(items):
+        for item_id, qty in items.items():
             try:
-                await stock_client.BulkRefund(BulkStockAdjustment(items=items))
+                await stock_client.AddStock(
+                    StockAdjustment(item_id=item_id, quantity=qty)
+                )
             except Exception as e:
                 current_app.logger.exception(
-                    "Error calling AddStock for items during order revert"
+                    "Error calling AddStock for item %s during order revert: %s",
+                    item_id,
+                    str(e),
                 )
                 abort(400, "Error communicating with stock service")
+            current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
 
-        # unpaid = db.compare_and_set(order_id, "paid", False, True)
-        #
-        # if not unpaid:
-        #     current_app.logger.error("Order already paid: %s", order_id)
-        #     return Response(f"Order {order_id} already paid", status=200)
-
+    t1 = perf_counter()
+    async with AsyncStockClient() as stock_client, AsyncPaymentClient() as payment_client:
+        t2 = perf_counter()
         order = get_order_from_db(order_id)
+        t3 = perf_counter()
+
         items = defaultdict(int)
+        tid = str(uuid.uuid4())
+        transaction = Transaction(
+            tid,
+            TransactionStatus.PENDING,
+            {"order_id": order_id},
+        )
+        db.save(transaction)
 
         for item in order.items:
             item_id, qty = item.split(":")
@@ -299,47 +337,48 @@ async def checkout_bulk(order_id: str):
         deducted_items = [x.to_proto() for x in items.values()]
 
         try:
-            stock_response = await stock_client.BulkOrder(
-                BulkStockAdjustment(items=deducted_items)
+            stock_rpc = stock_client.BulkOrder(
+                BulkStockAdjustment(items=deducted_items, tid=tid)
             )
         except Exception as e:
             current_app.logger.exception(
-                "Error calling RemoveStock for item %s", item_id
+                "Error calling RemoveStock for items %s", items
             )
-            db.set_attr(order_id, "paid", False, Order)
             abort(400, "Error communicating with stock service")
 
-        if not stock_response.status.success:
-            err_msg = stock_response.status.error or f"Insufficient stock for {item_id}"
-            current_app.logger.error(
-                "Stock deduction failed for item %s: %s", item_id, err_msg
-            )
-            db.set_attr(order_id, "paid", False, Order)
-            abort(400, err_msg)
-        else:
-            order.total_cost = stock_response.total_cost
+        payment_rpc = payment_client.ProcessPayment(
+            PaymentRequest(user_id=order.user_id, amount=order.total_cost, tid=tid)
+        )
 
-        logging.error("Checking out order with total cost: %s", order)
+        t5 = perf_counter()
+        payment_response = await payment_rpc
+        t6 = perf_counter()
+        stock_response = await stock_rpc
+        t7 = perf_counter()
 
-        # Process payment.
-        try:
-            payment_response = await payment_client.ProcessPayment(
-                PaymentRequest(user_id=order.user_id, amount=order.total_cost)
-            )
-        except Exception as e:
-            current_app.logger.exception(
-                "Error calling ProcessPayment for user %s", order.user_id
-            )
-            await revert_items(deducted_items)
-            db.set_attr(order_id, "paid", False, Order)
-            abort(400, "Error communicating with payment service")
         if not payment_response.success:
             err_msg = payment_response.error or "Payment failed"
             current_app.logger.error(
                 "Payment failed for order %s: %s", order_id, err_msg
             )
-            await revert_items(deducted_items)
-            db.set_attr(order_id, "paid", False, Order)
             abort(400, err_msg)
 
-        return Response("Checkout successful", status=200)
+        if not stock_response.status.success:
+            current_app.logger.error(
+                "Insufficient stock for some of the items: %s", items
+            )
+            abort(400, "Insufficient stock for some items")
+
+    t8 = perf_counter()
+
+    current_app.logger.info(
+        "Checkout successful for order %s. Timings (s): setup=%.4f, db=%.4f, prep=%.4f, payment=%.4f, stock=%.4f, total=%.4f",
+        order_id,
+        t2 - t1,  # Client setup
+        t3 - t2,  # DB fetch
+        t5 - t3,  # Preparation
+        t6 - t5,  # Payment
+        t7 - t6,  # Stock deduction
+        t8 - t0,  # Total
+    )
+    return Response("Checkout successful", status=200)

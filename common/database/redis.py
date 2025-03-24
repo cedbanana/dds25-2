@@ -28,25 +28,23 @@ return -1
 
 M_GTE_DECREMENT_SCRIPT = """
 local all_valid = true
-local values = {}
 
 -- First check all values
 for i, key in ipairs(KEYS) do
-    if i == 1 then
-        continue
+    if i > 1 then
+        local current = tonumber(redis.call('get', key))
+        if current == nil or tonumber(ARGV[i - 1]) > current then
+            all_valid = false
+            break
+        end
     end
-    local current = tonumber(redis.call('get', key))
-    if current == nil or tonumber(ARGV[i + 1]) > current then
-        all_valid = false
-        break
-    end
-    values[i] = current
 end
 
--- If all values meet the condition, decrement all
 if all_valid then
     for i, key in ipairs(KEYS) do
-        redis.call('decrby', key, ARGV[i])
+        if i > 1 then
+            redis.call('decrby', key, ARGV[i - 1])
+        end
     end
     redis.call('set', KEYS[1], 2)
     return 1
@@ -351,7 +349,6 @@ class RedisClient(DatabaseClient[T]):
         client = self._get_client()
 
         tidk = self._get_key(tid, "status")
-        print(f"tidk: {tidk}")
 
         keys = []
         values = []

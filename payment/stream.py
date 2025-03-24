@@ -14,8 +14,7 @@ import grpc
 from proto.stock_pb2_grpc import StockServiceStub
 
 from models import Transaction, TransactionStatus
-import time
-import random
+import requests
 import sys
 
 root = logging.getLogger()
@@ -26,6 +25,19 @@ handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 handler.setFormatter(formatter)
 root.addHandler(handler)
+
+ORDER_URL = "http://gateway:8000/orders"
+
+
+def commit_order(tid: str):
+    url = f"{ORDER_URL}/commit_checkout/{tid}"
+    try:
+        response = requests.post(url)
+        response.raise_for_status()
+        logging.info(f"Sent request to commit order for transaction {tid}, url {url}.")
+        return response.text
+    except Exception as e:
+        logging.info(f"Failed to commit order for transaction {tid}: {e}.")
 
 
 class VibeCheckerTransactionStatus(StreamProcessor):
@@ -72,7 +84,16 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             response = self._stock_client.VibeCheckTransactionStatus(
                 transaction.to_proto()
             )
-        except Exception as e:
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.FAILED_PRECONDITION:
+                logging.warning("Transaction %s locked remotely", tid)
+            else:
+                logging.exception("Error in VibeCheckTransactionStatus")
+            db.set_attr(tid, "locked", False, Transaction)
+            randsleep()
+            self._stream_producer.push(tid=tid)
+            return
+        except Exception:
             logging.exception("Error in VibeCheckTransactionStatus")
             db.set_attr(tid, "locked", False, Transaction)
             randsleep()
@@ -94,6 +115,7 @@ class VibeCheckerTransactionStatus(StreamProcessor):
             logging.info("Transaction %s is committing", tid)
             for k, v in transaction.details.items():
                 db.decrement(k, "committed_credit", v)
+            commit_order(transaction.id)
 
 
 if __name__ == "__main__":
