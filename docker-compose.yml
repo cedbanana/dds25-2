@@ -32,9 +32,9 @@ services:
       - stock-service
       - payment-service
     deploy:
-      replicas: 7
+      replicas: 4
     volumes:
-      - './order/profiles:/home/flask-app/profiles'
+      - "./order/profiles:/home/flask-app/profiles"
     ulimits:
       nofile:
         soft: "65536"
@@ -54,7 +54,7 @@ services:
     deploy:
       replicas: 1
     volumes:
-      - './stock/profiles:/home/flask-app/profiles'
+      - "./stock/profiles:/home/flask-app/profiles"
     ulimits:
       nofile:
         soft: "65536"
@@ -74,7 +74,7 @@ services:
     deploy:
       replicas: 4 # rpc
     volumes:
-      - './stock/profiles:/home/flask-app/profiles'
+      - "./stock/profiles:/home/flask-app/profiles"
     ulimits:
       nofile:
         soft: "65536"
@@ -90,11 +90,13 @@ services:
       - env/stock_redis.env
     environment: *dbenv
     depends_on:
-      - redis-stock
+      - sentinel1
+      - sentinel2
+      - sentinel3
     deploy:
-      replicas: 3 # stream
+      replicas: 2 # stream
     volumes:
-      - './stock/profiles:/home/flask-app/profiles'
+      - "./stock/profiles:/home/flask-app/profiles"
 
   payment-service:
     build:
@@ -108,7 +110,7 @@ services:
     depends_on:
       - redis-payment
     volumes:
-      - './payment/profiles:/home/flask-app/profiles'
+      - "./payment/profiles:/home/flask-app/profiles"
     deploy:
       replicas: 1
     ulimits:
@@ -128,7 +130,7 @@ services:
     depends_on:
       - redis-payment
     volumes:
-      - './payment/profiles:/home/flask-app/profiles'
+      - "./payment/profiles:/home/flask-app/profiles"
     deploy:
       replicas: 4 # rpc
 
@@ -142,24 +144,98 @@ services:
       - env/payment_redis.env
     environment: *dbenv
     depends_on:
-      - redis-payment
+      - sentinel1
+      - sentinel2
+      - sentinel3
     volumes:
-      - './payment/profiles:/home/flask-app/profiles'
+      - "./payment/profiles:/home/flask-app/profiles"
     deploy:
       replicas: 3 # stream
 
   ## Database Solutions
   redis-payment:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL --masterauth redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   redis-order:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL --masterauth redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   redis-stock:
     image: redis:7.2-bookworm
-    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL
+    command: redis-server --requirepass redis --maxmemory 1024mb & sleep 3 && redis-cli -a redis FLUSHALL --masterauth redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-payment-replica:
+    image: redis:7.2-bookworm
+    command: redis-server --requirepass redis --maxmemory 1024mb --replicaof redis-payment 6379 --masterauth redis
+    depends_on:
+      - redis-payment
+
+  redis-order-replica:
+    image: redis:7.2-bookworm
+    command: redis-server --requirepass redis --maxmemory 1024mb --replicaof redis-order 6379 --masterauth redis
+    depends_on:
+      - redis-order
+
+  redis-stock-replica:
+    image: redis:7.2-bookworm
+    command: redis-server --requirepass redis --maxmemory 1024mb --replicaof redis-stock 6379 --masterauth redis
+    depends_on:
+      - redis-stock
+
+  sentinel1:
+    image: redis:7.2-bookworm
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    depends_on:
+      redis-payment:
+        condition: service_healthy
+      redis-order:
+        condition: service_healthy
+      redis-stock:
+        condition: service_healthy
+
+  sentinel2:
+    image: redis:7.2-bookworm
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    depends_on:
+      redis-payment:
+        condition: service_healthy
+      redis-order:
+        condition: service_healthy
+      redis-stock:
+        condition: service_healthy
+
+  sentinel3:
+    image: redis:7.2-bookworm
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    depends_on:
+      redis-payment:
+        condition: service_healthy
+      redis-order:
+        condition: service_healthy
+      redis-stock:
+        condition: service_healthy
 
   # Locust for testing
   master:

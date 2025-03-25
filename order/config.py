@@ -22,8 +22,13 @@ load_dotenv()
 
 if os.environ.get("DB_TYPE", "redis") == "redis":
     db = RedisClient(
-        host=os.environ["REDIS_HOST"],
-        port=int(os.environ["REDIS_PORT"]),
+        sentinel_hosts=os.environ.get(
+            "SENTINEL_HOSTS", None
+        ),  # e.g., "sentinel1:26379,sentinel2:26379,sentinel3:26379"
+        master_name=os.environ.get(
+            "REDIS_MASTER_NAME", None),  # e.g., "order-master"
+        host=os.environ.get("REDIS_HOST", None),
+        port=int(os.environ.get("REDIS_PORT", None)),
         password=os.environ["REDIS_PASSWORD"],
         db=int(os.environ["REDIS_DB"]),
     )
