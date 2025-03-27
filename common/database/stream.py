@@ -71,8 +71,7 @@ class RedisStreamConsumer:
                     self.consumer_group,
                     self.consumer_name,
                     {self.stream_key: ">"},
-                    count=1,
-                    block=1000,
+                    count=1
                 )
 
                 if messages:
@@ -90,6 +89,7 @@ class RedisStreamConsumer:
                             except Exception as e:
                                 logging.exception("Error processing message")
             except Exception as e:
+                logging.error(f"[REDIS:] {self.redis_client.ping()}")
                 logging.exception("Error reading from strem")
                 time.sleep(5)  # Wait before retrying
 

@@ -28,7 +28,9 @@ services:
       DB_TYPE: redis
       PROFILING: false
     depends_on:
-      - redis-order
+      - sentinel1
+      - sentinel2
+      - sentinel3
       - stock-service
       - payment-service
     deploy:
@@ -50,7 +52,9 @@ services:
       - env/stock_redis.env
     environment: *dbenv
     depends_on:
-      - redis-stock
+      - sentinel1
+      - sentinel2
+      - sentinel3
     deploy:
       replicas: 1
     volumes:
@@ -70,7 +74,9 @@ services:
       - env/stock_redis.env
     environment: *dbenv
     depends_on:
-      - redis-stock
+      - sentinel1
+      - sentinel2
+      - sentinel3
     deploy:
       replicas: 4 # rpc
     volumes:
@@ -108,7 +114,9 @@ services:
       - env/payment_redis.env
     environment: *dbenv
     depends_on:
-      - redis-payment
+      - sentinel1
+      - sentinel2
+      - sentinel3
     volumes:
       - "./payment/profiles:/home/flask-app/profiles"
     deploy:
