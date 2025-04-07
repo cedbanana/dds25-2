@@ -72,6 +72,16 @@ class User:
         return cls(id=proto.id, credit=proto.credit)
 
 
+@dataclass 
+class Counter:
+    id: str 
+    count: int
+
+@dataclass 
+class Flag:
+    id: str 
+    enabled: bool
+
 class TransactionStatus(enum.Enum):
     PENDING = 0
     FAILURE = 1

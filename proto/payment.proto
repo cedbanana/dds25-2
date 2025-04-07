@@ -9,6 +9,11 @@ service PaymentService {
   rpc ProcessPayment(PaymentRequest) returns (PaymentResponse);
   rpc FindUser(FindUserRequest) returns (FindUserResponse);
   rpc VibeCheckTransactionStatus(common.TransactionStatus) returns (common.TransactionStatus);
+  rpc PrepareSnapshot(common.Empty) returns (common.OperationResponse);
+  rpc CheckSnapshotReady(common.Empty) returns (common.OperationResponse);
+  rpc Snapshot(common.Empty) returns (common.OperationResponse);
+  rpc Rollback(common.Empty) returns (common.OperationResponse);
+  rpc ContinueConsuming(common.Empty) returns (common.OperationResponse);
 }
 
 message User {

@@ -5,6 +5,7 @@ from config import (
     CONSUMER_GROUP,
     NUM_STREAM_CONSUMERS,
     STOCK_SERVICE_ADDR,
+    dlm,
 )
 import logging
 
@@ -13,7 +14,7 @@ import grpc.aio
 import grpc
 from proto.stock_pb2_grpc import StockServiceStub
 
-from models import Transaction, TransactionStatus
+from models import Transaction, TransactionStatus, Flag
 import requests
 import sys
 
@@ -52,6 +53,15 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         self._stock_client = StockServiceStub(self._stock_channel)
         self._stream_producer = db.get_stream_producer(STREAM_KEY)
 
+    def pre_xread(self):
+        flag = db.get("HALTED", Flag)
+        if flag.enabled:
+            # acquire lock 
+            lock = dlm.lock("consumer_lock", 3000)
+            db.increment("halted_consumers_counter", "count", 1)
+            dlm.unlock(lock)
+            # release lock 
+    
     def callback(self, id, tid=""):
         transaction = db.get(tid, Transaction)
 

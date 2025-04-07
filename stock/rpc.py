@@ -4,8 +4,8 @@ import grpc
 import grpc.aio
 import asyncio
 
-from config import STREAM_KEY, db
-from models import Stock, Transaction, TransactionStatus
+from config import STREAM_KEY, db, NUM_STREAM_CONSUMER_REPLICAS
+from models import Stock, Transaction, TransactionStatus, Flag, Counter
 from proto import stock_pb2, stock_pb2_grpc, common_pb2
 
 import sys
@@ -233,6 +233,47 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         # Successful
         return transaction.to_proto()
 
+    async def PrepareSnapshot(self, request, context):
+        flag = db.get("HALTED", Flag)
+        flag.enabled = True 
+        db.save(flag) 
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
+
+    async def CheckSnapshotReady(self, request, context):
+        count = db.get_attr("halted_consumers_counter", "count", Counter)
+        if (count == NUM_STREAM_CONSUMER_REPLICAS):
+            response = common_pb2.OperationResponse(success=True)
+            return response 
+        else:
+            response = common_pb2.OperationResponse(success=False)
+            return response 
+        
+
+    async def Snapshot(self, request, context):
+        db.snapshot()
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
+
+    async def Rollback(self, request, context):
+        # rollback logic 
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
+
+    async def ContinueConsuming(self, request, context):
+        flag = db.get("HALTED", Flag)
+        flag.enabled = False 
+        db.save(flag)
+
+        counter = db.get("halted_consumers_counter", Counter)
+        counter.count = 0
+        db.save(counter)
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
 
 async def serve():
     print("Starting gRPC Stock Service")

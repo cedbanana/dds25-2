@@ -12,6 +12,8 @@ from flask import Flask, request
 from prometheus_flask_exporter import PrometheusMetrics
 from werkzeug.middleware.profiler import ProfilerMiddleware
 
+from models import Flag, Counter
+
 from service import stock_blueprint
 from config import db, PROFILING
 from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
@@ -58,7 +60,13 @@ def cleanup():
 
 metrics = PrometheusMetrics(app)
 
+
 if __name__ == "__main__":
+    counter = Counter(id="halted_consumers_counter", count = 0)
+    db.save(counter)
+    flag = Flag(id="HALTED", enabled=False)
+    db.save(flag)
+    
     app.run(host="0.0.0.0", port=8000, debug=True)
 
     app.logger.setLevel(logging.DEBUG)  # Set level to DEBUG to capture all logs
@@ -69,6 +77,8 @@ if __name__ == "__main__":
     )
     handler.setFormatter(formatter)
     app.logger.addHandler(handler)
+
+
 
 else:
     gunicorn_logger = logging.getLogger("gunicorn.error")

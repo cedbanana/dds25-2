@@ -6,7 +6,7 @@ import warnings
 from proto import common_pb2 as proto_dot_common__pb2
 from proto import payment_pb2 as proto_dot_payment__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.71.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -55,6 +55,31 @@ class PaymentServiceStub(object):
                 request_serializer=proto_dot_common__pb2.TransactionStatus.SerializeToString,
                 response_deserializer=proto_dot_common__pb2.TransactionStatus.FromString,
                 _registered_method=True)
+        self.PrepareSnapshot = channel.unary_unary(
+                '/payment.PaymentService/PrepareSnapshot',
+                request_serializer=proto_dot_common__pb2.Empty.SerializeToString,
+                response_deserializer=proto_dot_common__pb2.OperationResponse.FromString,
+                _registered_method=True)
+        self.CheckSnapshotReady = channel.unary_unary(
+                '/payment.PaymentService/CheckSnapshotReady',
+                request_serializer=proto_dot_common__pb2.Empty.SerializeToString,
+                response_deserializer=proto_dot_common__pb2.OperationResponse.FromString,
+                _registered_method=True)
+        self.Snapshot = channel.unary_unary(
+                '/payment.PaymentService/Snapshot',
+                request_serializer=proto_dot_common__pb2.Empty.SerializeToString,
+                response_deserializer=proto_dot_common__pb2.OperationResponse.FromString,
+                _registered_method=True)
+        self.Rollback = channel.unary_unary(
+                '/payment.PaymentService/Rollback',
+                request_serializer=proto_dot_common__pb2.Empty.SerializeToString,
+                response_deserializer=proto_dot_common__pb2.OperationResponse.FromString,
+                _registered_method=True)
+        self.ContinueConsuming = channel.unary_unary(
+                '/payment.PaymentService/ContinueConsuming',
+                request_serializer=proto_dot_common__pb2.Empty.SerializeToString,
+                response_deserializer=proto_dot_common__pb2.OperationResponse.FromString,
+                _registered_method=True)
 
 
 class PaymentServiceServicer(object):
@@ -84,6 +109,36 @@ class PaymentServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PrepareSnapshot(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CheckSnapshotReady(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Snapshot(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Rollback(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ContinueConsuming(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PaymentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -106,6 +161,31 @@ def add_PaymentServiceServicer_to_server(servicer, server):
                     servicer.VibeCheckTransactionStatus,
                     request_deserializer=proto_dot_common__pb2.TransactionStatus.FromString,
                     response_serializer=proto_dot_common__pb2.TransactionStatus.SerializeToString,
+            ),
+            'PrepareSnapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.PrepareSnapshot,
+                    request_deserializer=proto_dot_common__pb2.Empty.FromString,
+                    response_serializer=proto_dot_common__pb2.OperationResponse.SerializeToString,
+            ),
+            'CheckSnapshotReady': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckSnapshotReady,
+                    request_deserializer=proto_dot_common__pb2.Empty.FromString,
+                    response_serializer=proto_dot_common__pb2.OperationResponse.SerializeToString,
+            ),
+            'Snapshot': grpc.unary_unary_rpc_method_handler(
+                    servicer.Snapshot,
+                    request_deserializer=proto_dot_common__pb2.Empty.FromString,
+                    response_serializer=proto_dot_common__pb2.OperationResponse.SerializeToString,
+            ),
+            'Rollback': grpc.unary_unary_rpc_method_handler(
+                    servicer.Rollback,
+                    request_deserializer=proto_dot_common__pb2.Empty.FromString,
+                    response_serializer=proto_dot_common__pb2.OperationResponse.SerializeToString,
+            ),
+            'ContinueConsuming': grpc.unary_unary_rpc_method_handler(
+                    servicer.ContinueConsuming,
+                    request_deserializer=proto_dot_common__pb2.Empty.FromString,
+                    response_serializer=proto_dot_common__pb2.OperationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -216,6 +296,141 @@ class PaymentService(object):
             '/payment.PaymentService/VibeCheckTransactionStatus',
             proto_dot_common__pb2.TransactionStatus.SerializeToString,
             proto_dot_common__pb2.TransactionStatus.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PrepareSnapshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/payment.PaymentService/PrepareSnapshot',
+            proto_dot_common__pb2.Empty.SerializeToString,
+            proto_dot_common__pb2.OperationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CheckSnapshotReady(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/payment.PaymentService/CheckSnapshotReady',
+            proto_dot_common__pb2.Empty.SerializeToString,
+            proto_dot_common__pb2.OperationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Snapshot(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/payment.PaymentService/Snapshot',
+            proto_dot_common__pb2.Empty.SerializeToString,
+            proto_dot_common__pb2.OperationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Rollback(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/payment.PaymentService/Rollback',
+            proto_dot_common__pb2.Empty.SerializeToString,
+            proto_dot_common__pb2.OperationResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ContinueConsuming(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/payment.PaymentService/ContinueConsuming',
+            proto_dot_common__pb2.Empty.SerializeToString,
+            proto_dot_common__pb2.OperationResponse.FromString,
             options,
             channel_credentials,
             insecure,

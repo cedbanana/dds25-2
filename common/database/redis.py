@@ -173,6 +173,10 @@ class RedisClient(DatabaseClient[T]):
 
         return model_class(**converted_data)
 
+    def snapshot(self):
+        response = self.save()
+        return response
+
     def save(self, model: T) -> None:
         if not hasattr(model, "id"):
             raise ValueError("Model must have an id attribute")

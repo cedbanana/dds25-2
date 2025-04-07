@@ -5,6 +5,7 @@ from config import (
     CONSUMER_GROUP,
     NUM_STREAM_CONSUMERS,
     PAYMENT_SERVICE_ADDR,
+    dlm,
 )
 import logging
 import json
@@ -12,10 +13,11 @@ import json
 import grpc
 from utils import randsleep
 from proto.payment_pb2_grpc import PaymentServiceStub
-from models import Transaction, TransactionStatus
+from models import Transaction, TransactionStatus, Flag
 
 import requests
 import sys
+
 
 root = logging.getLogger()
 root.setLevel(logging.DEBUG)
@@ -51,6 +53,14 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         )
         self._payment_client = PaymentServiceStub(self._payment_channel)
         self._stream_producer = db.get_stream_producer(STREAM_KEY)
+
+    def pre_xread(self):
+        flag = db.get("HALTED", Flag)
+        if flag.enabled:
+            lock = dlm.lock("consumer_lock", 3000)
+            db.increment("halted_consumers_counter", "count", 1)
+            dlm.unlock(lock)
+            
 
     def callback(self, id, tid=""):
         transaction = db.get(tid, Transaction)

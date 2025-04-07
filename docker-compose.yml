@@ -104,6 +104,27 @@ services:
     volumes:
       - "./stock/profiles:/home/flask-app/profiles"
 
+  cron:
+    build:
+      context: . 
+      dockerfile: Dockerfile.cron
+    image: cron:latest
+    command: python cron.py 
+    env_file: 
+      - env/cron.env  
+    volumes:
+      - ./cron:/cron  
+    depends_on:
+      - payment-rpc
+      - order-service
+      - stock-rpc 
+    # restart: unless-stopped 
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
+
+
   payment-service:
     build:
       context: .

@@ -7,7 +7,7 @@ from time import perf_counter
 from collections import defaultdict
 from quart import Blueprint, jsonify, abort, Response, current_app
 from config import db, AsyncPaymentClient, AsyncStockClient
-from models import Order, Stock, Transaction, TransactionStatus
+from models import Order, Stock, Transaction, TransactionStatus, Flag
 from redis.exceptions import WatchError
 from database import TransactionConfig
 from proto.payment_pb2 import PaymentRequest
@@ -173,6 +173,25 @@ async def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str)
     current_app.logger.info(f"Successfully initialized {n} random orders")
     return jsonify({"msg": "Batch init for orders successful"})
 
+@order_blueprint.post("/prepare_rollback")
+async def prepare_rollback():
+    flag = db.get("HALTED", Flag)
+    flag.enabled = True 
+    db.save(flag)
+    return Response("Flag set successfully", status=200)
+
+@order_blueprint.post("/snapshot")
+async def snapshot():
+    db.snapshot()
+    return Response("Snapshot taken successfully", status=200)
+
+@order_blueprint.post("/continue")
+async def continue_rollback_finished():
+    flag = db.get("HALTED", Flag)
+    flag.enabled = False
+    db.save(flag) 
+    return Response("Flag set successfully", status=200)
+
 
 @order_blueprint.post("/commit_checkout/<tid>")
 async def commit_checkout_individual(tid: str):
@@ -193,6 +212,10 @@ async def commit_checkout_individual(tid: str):
 # Does individual stock adjustments
 # @order_blueprint.post("/checkout/<order_id>")
 async def checkout_individual(order_id: str):
+    flag = db.get("HALTED", Flag)
+    if flag.enabled:
+        return Response("Server unavailable", status=500)
+
     t0 = perf_counter()
 
     async def revert_items(items):

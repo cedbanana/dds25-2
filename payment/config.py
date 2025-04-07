@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 from database import RedisClient, IgniteClient
 from utils import hosttotup, wait_for_ignite
 from models import User
+from redlock import Redlock
+
 
 load_dotenv()
 
@@ -26,6 +28,7 @@ if os.environ.get("DB_TYPE", "redis") == "redis":
         password=os.environ["REDIS_PASSWORD"],
         db=int(os.environ["REDIS_DB"]),
     )
+    dlm = Redlock([{"host":os.environ.get("REDIS_HOST", None), "port":int(os.environ.get("REDIS_PORT", None)), "db":int(os.environ["REDIS_DB"]), "password":os.environ["REDIS_PASSWORD"],},])
 else:
     print(list(map(hosttotup, os.environ["IGNITE_HOSTS"].split(","))))
     wait_for_ignite()
@@ -36,6 +39,7 @@ else:
 PROFILING = os.environ.get("PROFILING", "false") == "true"
 
 STREAM_KEY = "transactions"
-CONSUMER_GROUP = "pula"
+CONSUMER_GROUP = "transaction_consumer_group"
 NUM_STREAM_CONSUMERS = int(os.environ.get("NUM_STREAM_CONSUMERS", "1"))
+NUM_STREAM_CONSUMER_REPLICAS = int(os.environ.get("NUM_STREAM_CONSUMER_REPLICAS", "1"))
 STOCK_SERVICE_ADDR = os.environ["STOCK_SERVICE_ADDR"]

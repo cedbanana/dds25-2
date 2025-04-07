@@ -57,6 +57,11 @@ def cleanup():
 
 
 if __name__ == "__main__":
+    counter = Counter(id="halted_consumers_counter", count = 0)
+    db.save(counter)
+    flag = Flag(id="HALTED", enabled=False)
+    db.save(flag)
+    
     app.logger.setLevel(logging.DEBUG)  # Set level to DEBUG to capture all logs
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.DEBUG)  # Log level to DEBUG to capture detailed logs

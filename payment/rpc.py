@@ -2,8 +2,8 @@ import logging
 from concurrent import futures
 import grpc
 import grpc.aio
-from config import STREAM_KEY, db
-from models import User, Transaction, TransactionStatus
+from config import STREAM_KEY, db, NUM_STREAM_CONSUMER_REPLICAS
+from models import User, Transaction, TransactionStatus, Counter, Flag
 from proto import payment_pb2, payment_pb2_grpc, common_pb2
 import asyncio
 import sys
@@ -134,6 +134,47 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
 
         return transaction.to_proto()
 
+    async def PrepareSnapshot(self):
+        flag = db.get("HALTED", Flag)
+        flag.enabled = True 
+        db.save(flag) 
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
+
+    async def CheckSnapshotReady(self):
+        count = db.get_attr("halted_consumers_counter", "count", Counter)
+        if (count == NUM_STREAM_CONSUMER_REPLICAS):
+            response = common_pb2.OperationResponse(success=True)
+            return response 
+        else:
+            response = common_pb2.OperationResponse(success=False)
+            return response 
+        
+
+    async def Snapshot(self):
+        db.snapshot()
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
+
+    async def Rollback(self):
+        # rollback logic 
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
+
+    async def ContinueConsuming(self):
+        flag = db.get("HALTED", Flag)
+        flag.enabled = False 
+        db.save(flag)
+
+        counter = db.get("halted_consumers_counter", Counter)
+        counter.count = 0
+        db.save(counter)
+
+        response = common_pb2.OperationResponse(success=True)
+        return response 
 
 async def serve():
     print("Starting gRPC Payment Service")

@@ -59,12 +59,16 @@ class RedisStreamConsumer:
             if "BUSYGROUP" not in str(e):
                 raise
 
+    def pre_xread(self):
+        pass
+
     def consume(self, callback: Callable):
         """Continuously consume messages from the stream and pass them to the callback."""
         logging.error(
             "Starting consumer %s on stream key %s", self.consumer_name, self.stream_key
         )
         while True:
+            self.pre_xread()
             try:
                 # Read messages from the stream
                 messages = self.redis_client.xreadgroup(
