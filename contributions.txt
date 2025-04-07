@@ -13,6 +13,11 @@ This project I:
 - ran experiments
 
 Yigit Çolakoğlu:
+- Initial design
+- gRPC implementation
+- Redis Streams and Lua Scripts
+- Saga Choreography
+- Performance Optimisations
 
 Adrian Munteanu:
 - worked on redis-sentinel
