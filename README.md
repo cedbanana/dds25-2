@@ -9,19 +9,23 @@ It is built with a microservices architecture to efficiently handle orders, paym
 ### ‼️ 1. Consistency Test :
 We enhanced the consistency test provided in the benchmark. 
 The initial version did not account for eventual consistency, which we have implemented, as it only checked the immediate final state of the system.
-It also verified only successful transactions, but does not account for failed transactions.
+It also assumed all the transactions were successful, but that is not always the case.
 
 Our system becomes consistent after a while, but the test does not wait for that to happen.
 
 To account for this, we wrote a new consistency test that allows the user to rerun the check for consistency multiple times until the system eventually becomes consistent.
-Our consistency test can be run with the following command:
+
+To run the consistency test, run the following commands in the terminal:
+1. ```docker compose up --build -d```
+2. ```python tests/consistency/test.py```
+
+Or, if using PyCharm, you can click on the shortcut below after running command 1:
 `test`
 
-As currently we ensure eventual consistency, you should allow the system to synchronize and retry the test a couple of times (3-5) before concluding that the system is inconsistent.
+As currently we ensure eventual consistency, you should allow the system to synchronize and retry the test a couple of times (3-5) or wait for 30s before concluding that the system is inconsistent.
 
 ### 😵 2. What can be killed :
-Not the database.
-Everything except the database.
+Try anything. :)
 
 ### 🏗️ 3. Scaling the system for better performance: 
 - Order Service: In ```order-service```, modify the number of replicas by changing the ```replicas``` value in ```deployment```.
@@ -78,7 +82,7 @@ We implemented a **Choreography-based Saga** pattern to manage distributed trans
     </tr>
     <tr>
       <td><ol>
-        <li>Sends a request to Stock and Payment to deduct the amount for that order./li>
+        <li>Sends a request to Stock and Payment to deduct the amount for that order.</li>
         <li>Waits for the response from Stock and Payment.</li>
         <li>If both are successful, returns 200 as the checkout was successful.</li>
         <li>If any one of them fails, returns 400 and doesn't try again.</li>
@@ -96,7 +100,7 @@ We implemented a **Choreography-based Saga** pattern to manage distributed trans
         <li>If sufficient funds are available, it deducts the amount from its credit.</li>
         <li>Sends response to the Order service with the result of the deduction (success/failure).</li>
         <li>Pushes the transaction id for this operation to the Redis Stream to be rolled back or committed.</li>
-        <li>Continuously listens to messages from the Stock service for this transaction and rolls back if stock deduction failed<./li>
+        <li>Continuously listens to messages from the Stock service for this transaction and rolls back if stock deduction failed.</li>
         <li>Continuously process the transaction id stream and poll stock for its status. If stock is down, pushes back to stream.</li>
       </ol></td>
     </tr>
