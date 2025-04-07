@@ -1,4 +1,8 @@
 Andra Alăzăroaie:
+- partly implement the protocol
+- partly worked on the RabbitMQ version of the project 
+- worked on a previous protocol implementation
+- testing
 
 Alexandra Căruţaşu:
 This project I:
