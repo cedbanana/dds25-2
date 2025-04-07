@@ -10,6 +10,7 @@
 
 
 <details>
+<summary>Table of Contents</summary>
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
 
 - [Group 2 Web-scale Data Management Project](#group-2-web-scale-data-management-project)
