@@ -11,5 +11,10 @@ This project I:
 Yigit Çolakoğlu:
 
 Adrian Munteanu:
+- worked on redis-sentinel
+- worked on the preliminary implementation of redis streams
+- wrote documentation ( first report)
+- ran intensive tests
+- work a bit on the setup of RabbitMQ
 
 Albert Sandu:
