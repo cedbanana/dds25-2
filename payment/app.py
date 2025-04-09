@@ -13,6 +13,8 @@ from prometheus_flask_exporter import PrometheusMetrics  # New import
 from werkzeug.middleware.profiler import ProfilerMiddleware
 from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
 
+from models import Flag, Counter
+
 from service import payment_blueprint
 from config import db, PROFILING
 
@@ -57,11 +59,16 @@ def cleanup():
 
 
 if __name__ == "__main__":
-    counter = Counter(id="halted_consumers_counter", count = 0)
-    db.save(counter)
-    flag = Flag(id="HALTED", enabled=False)
-    db.save(flag)
-    
+    counter = db.get("halted_consumers_counter", Counter)
+    if counter is None:
+        counter = Counter(id="halted_consumers_counter", count = 0)
+        db.save(counter)
+
+    flag = db.get("HALTED", Flag)
+    if flag is None:
+        flag = Flag(id="HALTED", enabled=False)
+        db.save(flag)
+        
     app.logger.setLevel(logging.DEBUG)  # Set level to DEBUG to capture all logs
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.DEBUG)  # Log level to DEBUG to capture detailed logs
@@ -73,6 +80,16 @@ if __name__ == "__main__":
 
     app.run(host="0.0.0.0", port=8000, debug=True)
 else:
+    counter = db.get("halted_consumers_counter", Counter)
+    if counter is None:
+        counter = Counter(id="halted_consumers_counter", count = 0)
+        db.save(counter)
+
+    flag = db.get("HALTED", Flag)
+    if flag is None:
+        flag = Flag(id="HALTED", enabled=False)
+        db.save(flag)
+
     gunicorn_logger = logging.getLogger("gunicorn.error")
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)

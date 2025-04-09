@@ -134,7 +134,7 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
 
         return transaction.to_proto()
 
-    async def PrepareSnapshot(self):
+    async def PrepareSnapshot(self, request, context):
         flag = db.get("HALTED", Flag)
         flag.enabled = True 
         db.save(flag) 
@@ -142,9 +142,11 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
         response = common_pb2.OperationResponse(success=True)
         return response 
 
-    async def CheckSnapshotReady(self):
+    async def CheckSnapshotReady(self, request, context):
         count = db.get_attr("halted_consumers_counter", "count", Counter)
-        if (count == NUM_STREAM_CONSUMER_REPLICAS):
+        # print(f"count: {count} ; needed: {NUM_STREAM_CONSUMER_REPLICAS}")
+        sys.stdout.flush()
+        if (count >= NUM_STREAM_CONSUMER_REPLICAS):
             response = common_pb2.OperationResponse(success=True)
             return response 
         else:
@@ -152,19 +154,19 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
             return response 
         
 
-    async def Snapshot(self):
+    async def Snapshot(self, request, context):
         db.snapshot()
 
         response = common_pb2.OperationResponse(success=True)
         return response 
 
-    async def Rollback(self):
+    async def Rollback(self, request, context):
         # rollback logic 
 
         response = common_pb2.OperationResponse(success=True)
         return response 
 
-    async def ContinueConsuming(self):
+    async def ContinueConsuming(self, request, context):
         flag = db.get("HALTED", Flag)
         flag.enabled = False 
         db.save(flag)

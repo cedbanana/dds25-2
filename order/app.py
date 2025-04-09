@@ -14,6 +14,8 @@ from prometheus_flask_exporter import (
 from werkzeug.middleware.profiler import ProfilerMiddleware
 from metrics import REQUEST_IN_PROGRESS, REQUEST_COUNT, REQUEST_LATENCY
 
+from models import Flag
+
 app = Quart("order-service")
 app.register_blueprint(order_blueprint)
 
@@ -57,8 +59,10 @@ def cleanup():
 # metrics = PrometheusMetrics(app)
 
 if __name__ == "__main__":
-    flag = Flag(id="HALTED", enabled=False)
-    db.save(flag)
+    flag = db.get("HALTED", Flag)
+    if flag is None:
+        flag = Flag(id="HALTED", enabled=False)
+        db.save(flag)
 
     app.logger.setLevel(logging.DEBUG)
     handler = logging.StreamHandler(sys.stdout)
@@ -71,6 +75,11 @@ if __name__ == "__main__":
 
     app.run(host="0.0.0.0", port=8000, debug=True)
 else:
+    flag = db.get("HALTED", Flag)
+    if flag is None:
+        flag = Flag(id="HALTED", enabled=False)
+        db.save(flag)
+
     gunicorn_logger = logging.getLogger("gunicorn.error")
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)

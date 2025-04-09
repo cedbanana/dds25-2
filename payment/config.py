@@ -28,7 +28,7 @@ if os.environ.get("DB_TYPE", "redis") == "redis":
         password=os.environ["REDIS_PASSWORD"],
         db=int(os.environ["REDIS_DB"]),
     )
-    dlm = Redlock([{"host":os.environ.get("REDIS_HOST", None), "port":int(os.environ.get("REDIS_PORT", None)), "db":int(os.environ["REDIS_DB"]), "password":os.environ["REDIS_PASSWORD"],},])
+    dlm = Redlock([db.redis], retry_count=-1)
 else:
     print(list(map(hosttotup, os.environ["IGNITE_HOSTS"].split(","))))
     wait_for_ignite()

@@ -174,7 +174,7 @@ class RedisClient(DatabaseClient[T]):
         return model_class(**converted_data)
 
     def snapshot(self):
-        response = self.save()
+        response = self.redis.save()
         return response
 
     def save(self, model: T) -> None:

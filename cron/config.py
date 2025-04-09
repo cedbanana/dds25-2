@@ -20,6 +20,8 @@ STOCK_RPC_ADDR = os.environ["STOCK_RPC_ADDR"]
 GATEWAY_ADDR = os.environ["GATEWAY_ADDR"]
 ORDER_ADDR = GATEWAY_ADDR + "/order"
 
+print("Hi!!! Doing config")
+
 class AsyncPaymentClient:
     def __init__(self):
         self._payment_channel = None

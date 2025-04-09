@@ -243,7 +243,10 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
     async def CheckSnapshotReady(self, request, context):
         count = db.get_attr("halted_consumers_counter", "count", Counter)
-        if (count == NUM_STREAM_CONSUMER_REPLICAS):
+        # print(f"count: {count} ; needed: {NUM_STREAM_CONSUMER_REPLICAS}")
+        sys.stdout.flush()
+        
+        if (count >= NUM_STREAM_CONSUMER_REPLICAS):
             response = common_pb2.OperationResponse(success=True)
             return response 
         else:
