@@ -234,13 +234,13 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         return transaction.to_proto()
 
     async def PrepareSnapshot(self, request, context):
-        flag = db.get("HALTED", Flag)
-        flag.enabled = True
-        db.save(flag)
-
         lock = db.redis.lock("snapshot_lock", timeout=5)
 
         if lock.acquire(blocking=False):
+            flag = db.get("HALTED", Flag)
+            flag.enabled = True
+            db.save(flag)
+
             response = common_pb2.OperationResponse(success=True)
             return response
         else:
@@ -272,17 +272,17 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         return response
 
     async def ContinueConsuming(self, request, context):
-        flag = db.get("HALTED", Flag)
-        flag.enabled = False
-        db.save(flag)
-
-        counter = db.get("halted_consumers_counter", Counter)
-        counter.count = 0
-        db.save(counter)
-
         lock = db.redis.lock("snapshot_lock", timeout=60)
 
         if lock:
+            flag = db.get("HALTED", Flag)
+            flag.enabled = False
+            db.save(flag)
+
+            counter = db.get("halted_consumers_counter", Counter)
+            counter.count = 0
+            db.save(counter)
+
             lock.release()
             response = common_pb2.OperationResponse(success=True)
             return response
