@@ -4,10 +4,10 @@
 > **Note To Reader**
 > Dear reader of this README, in case you do not have time and need to skip over
 > some of this. We believe the following are must-reads:
+> - [Architecture Overview](#architecture-overview)
 > - [A Note on Our Consistency Model](#a-note-on-our-consistency-model)
 > - [Choreographing Saga](#-choreography-based-saga-implementation)
 > - [Core Components](#-core-components)
-
 
 <details>
 <summary>Table of Contents</summary>
@@ -16,6 +16,7 @@
 - [Group 2 Web-scale Data Management Project](#group-2-web-scale-data-management-project)
    * [📖 Introduction](#-introduction)
    * [A Note on Our Consistency Model](#a-note-on-our-consistency-model)
+   * [Architecture Overview](#architecture-overview)
    * [⚠️ Instructions](#-instructions)
       + [‼️ 1. Consistency Test :](#-1-consistency-test-)
       + [‼️ 2. Performance Tests :](#-2-performance-tests-)
@@ -47,7 +48,6 @@
 <!-- TOC end -->
 </details>
 
-
 ## 📖 Introduction
 This project serves as a scalable and distributed data management system.
 
@@ -67,6 +67,15 @@ other applications.
 
 Because of this, we prefer to refer to this consistency model as "Quick Consistency".
 
+## Architecture Overview
+The project implements a microservices-based system for transaction processing, built around three core services: Order, Payment, and Stock. These services communicate synchronously via gRPC for request handling and asynchronously through Redis streams for transaction coordination. The system employs Redis as its primary database, with Redis Sentinel providing high availability through automatic failover capabilities. 
+
+The core of the system is a choreography-based Saga pattern that manages distributed transactions. When a checkout is initiated, the Order service coordinates with Payment and Stock services to validate and process the transaction. Each service records its transaction state in Redis streams, which are continuously monitored by dedicated stream processors. This approach allows the system to maintain data integrity even during partial service failures through compensating transactions.
+
+The architecture implements what we call "Quick Consistency" - an optimized form of eventual consistency that minimizes the time services spend in inconsistent states. Transactions are committed to the database only after internal validation, significantly reducing the Time-To-Consistency (TTC). This design choice balances the performance benefits of asynchronous processing with the reliability needs of a transaction-based system.
+
+Performance is enhanced through several optimizations, including asynchronous processing with asyncio, parallel execution of operations, and Redis Lua scripts for atomic actions. The system successfully handles 5,000+ concurrent transactions with response times averaging 300-400ms under normal load, and shows near-linear scaling when adding service replicas. The architecture prioritizes high availability and partition tolerance while ensuring data synchronization across all services.
+
 ## ⚠️ Instructions
 ### ‼️ 1. Consistency Test :
 We enhanced the consistency test provided in the benchmark. The initial version
@@ -74,7 +83,7 @@ did not account for systems that took time to process all checkouts. Moreover, i
 but that is not always the case and the failed transactions need to be
 accounted for when checking consistency.
 
-We have implemented an enchanced test suite that addresses these problems by
+We have implemented an enhanced test suite that addresses these problems by
 allowing the user to re-run the check for consistency multiple times until all
 checkouts are processed. Moreover, it also shows useful metrics pertaining to
 the state of the system.
@@ -119,7 +128,7 @@ Primary database for all services. Stores inventory, payment, and orders informa
 
 Redis Streams are used internally by the payment and order microservices to asynchronously
 store and consume transactions that need to be processed. They allow us to have the obtain
-the benefits of message queues wihout dealing with their additional overhead.
+the benefits of message queues without dealing with their additional overhead.
 
 #### Redis Lua Scripts
 
