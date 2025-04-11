@@ -187,10 +187,10 @@ class PaymentServiceServicer(payment_pb2_grpc.PaymentServiceServicer):
 
             lock.release()
             response = common_pb2.OperationResponse(success=True)
-            logging.warning("I came")
+            logging.warning("Lock released and counter incremented successfully!")
             return response
         else:
-            logging.error("AH SHIT")
+            logging.error("Lock error! This shouldn't happen.")
             response = common_pb2.OperationResponse(success=False)
             return response
         
