@@ -27,3 +27,10 @@ Adrian Munteanu:
 - work a bit on the setup of RabbitMQ
 
 Albert Sandu:
+- changed grpc to grpc-aio
+- rpc calls in order asynchronously
+- bug fixes
+- documentation (first report) 
+- prometheus + grafana integration with custom aggregates (in now deleted-branches)
+- some now-deleted optimizations (we changed designs) 
+- working on a mechanism to take snapshots at the same time across microservices (unfinished)
