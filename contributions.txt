@@ -1,0 +1,37 @@
+Andra Alăzăroaie:
+- partly implement the protocol
+- partly worked on the RabbitMQ version of the project 
+- worked on a previous protocol implementation
+- testing
+
+Alexandra Căruţaşu:
+- co-developed a version of the project that used RabbitMQ with other team members
+- wrote final documentation & first report design
+- ran experiments
+- Static driver-navigator pair programmed and collaborated on discussions for the protocol design
+- was emotional support
+
+
+Yigit Çolakoğlu:
+- Initial design
+- gRPC implementation
+- Redis Streams and Lua Scripts
+- Saga Choreography
+- Performance Optimisations
+
+Adrian Munteanu:
+- worked on redis-sentinel
+- worked on the preliminary implementation of redis streams
+- wrote documentation ( first report)
+- ran intensive tests
+- work a bit on the setup of RabbitMQ
+- Came up with "Quick Consistency" name
+
+Albert Sandu:
+- changed grpc to grpc-aio
+- rpc calls in order asynchronously
+- bug fixes
+- documentation (first report) 
+- prometheus + grafana integration with custom aggregates (in now deleted-branches)
+- some now-deleted optimizations (we changed designs) 
+- working on a mechanism to take snapshots at the same time across microservices (unfinished)
