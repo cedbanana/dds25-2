@@ -56,7 +56,7 @@ class VibeCheckerTransactionStatus(StreamProcessor):
 
     def pre_xread(self):
         flag = db.get("HALTED", Flag)
-        if flag.enabled:
+        if flag is not None and flag.enabled:
             # lock = dlm.lock("consumer_lock", 3000)
             lock = db.redis.lock('consumer_lock', timeout=10)
             lock.acquire(blocking=True)
