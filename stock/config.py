@@ -42,6 +42,5 @@ PROFILING = os.environ.get("PROFILING", "false") == "true"
 
 STREAM_KEY = "transactions"
 CONSUMER_GROUP = "transaction_consumer_group"
-NUM_STREAM_CONSUMERS = int(os.environ.get("NUM_STREAM_CONSUMERS", "1"))
 NUM_STREAM_CONSUMER_REPLICAS = int(os.environ["NUM_STREAM_CONSUMER_REPLICAS"])
 PAYMENT_SERVICE_ADDR = os.environ["PAYMENT_SERVICE_ADDR"]

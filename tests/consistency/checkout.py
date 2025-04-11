@@ -69,11 +69,15 @@ async def get_final_order_statuses(orders):
             order_id = order["order_id"]
             url = f"{ORDER_URL}/find_order/{order_id}"
             async with session.get(url) as resp:
-                data = await resp.json()
-                order["paid"] = data.get("paid", 0)
-                order["total_cost"] = data.get("total_cost", 0)
-                order["items"] = data.get("items", [])
-                return order
+                try: 
+                    data = await resp.json()
+                    order["paid"] = data.get("paid", 0)
+                    order["total_cost"] = data.get("total_cost", 0)
+                    order["items"] = data.get("items", [])
+                    return order
+                except Exception as e:
+                    print(e)
+                    print(resp)
 
         checkout_results = await asyncio.gather(
             *(fetch_order_status(order) for order in orders)

@@ -100,7 +100,7 @@ services:
       - sentinel2
       - sentinel3
     deploy:
-      replicas: 2 # stream
+      replicas: 3 # stream
     volumes:
       - "./stock/profiles:/home/flask-app/profiles"
 

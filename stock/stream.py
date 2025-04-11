@@ -3,7 +3,6 @@ from config import (
     db,
     STREAM_KEY,
     CONSUMER_GROUP,
-    NUM_STREAM_CONSUMERS,
     PAYMENT_SERVICE_ADDR,
     dlm,
 )
@@ -58,12 +57,12 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         flag = db.get("HALTED", Flag)
         if flag is not None and flag.enabled:
             # lock = dlm.lock("consumer_lock", 3000)
-            lock = db.redis.lock("consumer_lock", timeout=10)
             db.increment("halted_consumers_counter", "count", 1)
 
             lock = db.redis.lock("snapshot_lock")
 
             if lock.acquire(blocking=True):
+                logging.warning("GOT'EM")
                 lock.release()
 
     def callback(self, id, tid=""):

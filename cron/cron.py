@@ -79,12 +79,12 @@ async def finish_snapshot():
 
 async def start_scheduler():
     while True:
-        time.sleep(5) # seconds 
         try:
             await prepare_snapshot()
             await check_ready()
             await snapshot()
             await finish_snapshot()
+            await asyncio.sleep(10) # seconds 
         except Exception as e:
             print(f"Error: {e}")
             sys.stdout.flush()

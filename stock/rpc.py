@@ -234,9 +234,9 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         return transaction.to_proto()
 
     async def PrepareSnapshot(self, request, context):
-        lock = db.redis.lock("snapshot_lock", timeout=5)
+        lock = db.redis.lock("snapshot_lock", timeout=60)
 
-        if lock.acquire(blocking=False):
+        if lock.acquire(blocking=False, token="yeat"):
             flag = db.get("HALTED", Flag)
             flag.enabled = True
             db.save(flag)
@@ -244,6 +244,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
             response = common_pb2.OperationResponse(success=True)
             return response
         else:
+            logging.error("no lock :(((")
             response = common_pb2.OperationResponse(success=False)
             return response
 
@@ -275,6 +276,7 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
         lock = db.redis.lock("snapshot_lock", timeout=60)
 
         if lock:
+            lock.local.token = db.redis.connection_pool.get_encoder().encode('yeat')
             flag = db.get("HALTED", Flag)
             flag.enabled = False
             db.save(flag)
@@ -285,8 +287,10 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
             lock.release()
             response = common_pb2.OperationResponse(success=True)
+            logging.warning("I came")
             return response
         else:
+            logging.error("AH SHIT")
             response = common_pb2.OperationResponse(success=False)
             return response
 

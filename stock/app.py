@@ -86,15 +86,11 @@ if __name__ == "__main__":
 
 
 else:
-    counter = db.get("halted_consumers_counter", Counter)
-    if counter is None:
-        counter = Counter(id="halted_consumers_counter", count = 0)
-        db.save(counter)
+    counter = Counter(id="halted_consumers_counter", count = 0)
+    db.save(counter)
 
-    flag = db.get("HALTED", Flag)
-    if flag is None:
-        flag = Flag(id="HALTED", enabled=False)
-        db.save(flag)
+    flag = Flag(id="HALTED", enabled=False)
+    db.save(flag)
 
 
     gunicorn_logger = logging.getLogger("gunicorn.error")
