@@ -173,23 +173,26 @@ async def batch_init_orders(n: str, n_items: str, n_users: str, item_price: str)
     current_app.logger.info(f"Successfully initialized {n} random orders")
     return jsonify({"msg": "Batch init for orders successful"})
 
+
 @order_blueprint.post("/prepare_rollback")
 async def prepare_rollback():
     flag = db.get("HALTED", Flag)
-    flag.enabled = True 
+    flag.enabled = True
     db.save(flag)
     return Response("Flag set successfully", status=200)
+
 
 @order_blueprint.post("/snapshot")
 async def snapshot():
     db.snapshot()
     return Response("Snapshot taken successfully", status=200)
 
+
 @order_blueprint.post("/continue")
 async def continue_rollback_finished():
     flag = db.get("HALTED", Flag)
     flag.enabled = False
-    db.save(flag) 
+    db.save(flag)
     return Response("Flag set successfully", status=200)
 
 
@@ -234,7 +237,10 @@ async def checkout_individual(order_id: str):
             current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
 
     t1 = perf_counter()
-    async with AsyncStockClient() as stock_client, AsyncPaymentClient() as payment_client:
+    async with (
+        AsyncStockClient() as stock_client,
+        AsyncPaymentClient() as payment_client,
+    ):
         t2 = perf_counter()
         order = get_order_from_db(order_id)
         t3 = perf_counter()
@@ -318,6 +324,10 @@ async def checkout_individual(order_id: str):
 
 @order_blueprint.post("/checkout/<order_id>")
 async def checkout_bulk(order_id: str):
+    flag = db.get("HALTED", Flag)
+    if flag.enabled:
+        return Response("Server unavailable", status=500)
+
     t0 = perf_counter()
 
     async def revert_items(items):
@@ -336,7 +346,10 @@ async def checkout_bulk(order_id: str):
             current_app.logger.info("Reverted stock for item %s: %s", item_id, qty)
 
     t1 = perf_counter()
-    async with AsyncStockClient() as stock_client, AsyncPaymentClient() as payment_client:
+    async with (
+        AsyncStockClient() as stock_client,
+        AsyncPaymentClient() as payment_client,
+    ):
         t2 = perf_counter()
         order = get_order_from_db(order_id)
         t3 = perf_counter()

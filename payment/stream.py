@@ -30,15 +30,23 @@ root.addHandler(handler)
 ORDER_URL = "http://gateway:8000/orders"
 
 
-def commit_order(tid: str):
+def commit_order(tid: str, max_retry=10):
     url = f"{ORDER_URL}/commit_checkout/{tid}"
-    try:
-        response = requests.post(url)
-        response.raise_for_status()
-        logging.info(f"Sent request to commit order for transaction {tid}, url {url}.")
-        return response.text
-    except Exception as e:
-        logging.info(f"Failed to commit order for transaction {tid}: {e}.")
+    count = 0
+    while count < max_retry:
+        try:
+            response = requests.post(url)
+            response.raise_for_status()
+            logging.info(
+                f"Sent request to commit order for transaction {tid}, url {url}."
+            )
+            return response.text
+        except Exception as e:
+            logging.error(f"Failed to commit order for transaction {tid}: {e}.")
+            count += 1
+            randsleep()
+
+    return None
 
 
 class VibeCheckerTransactionStatus(StreamProcessor):
