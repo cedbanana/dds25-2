@@ -43,9 +43,13 @@ def commit_order(tid: str, max_retry=10):
             )
             return response.text
         except Exception as e:
-            logging.error(f"Failed to commit order for transaction {tid}: {e}.")
             count += 1
+            logging.error(
+                f"Failed to commit order for transaction {tid}: {e}. Trial {count}!"
+            )
             randsleep()
+
+    logging.error(f"Gave up on committing transaction {tid}")
 
     return None
 
