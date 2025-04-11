@@ -6,10 +6,11 @@ Andra Alăzăroaie:
 
 Alexandra Căruţaşu:
 - co-developed a version of the project that used RabbitMQ with other team members
-- Static driver-navigator pair programmed
 - wrote final documentation & first report design
-- was emotional support
 - ran experiments
+- Static driver-navigator pair programmed and collaborated on discussions for the protocol design
+- was emotional support
+
 
 Yigit Çolakoğlu:
 - Initial design
