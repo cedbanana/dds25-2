@@ -235,48 +235,61 @@ class StockServiceServicer(stock_pb2_grpc.StockServiceServicer):
 
     async def PrepareSnapshot(self, request, context):
         flag = db.get("HALTED", Flag)
-        flag.enabled = True 
-        db.save(flag) 
+        flag.enabled = True
+        db.save(flag)
 
-        response = common_pb2.OperationResponse(success=True)
-        return response 
+        lock = db.redis.lock("snapshot_lock", timeout=5)
+
+        if lock.acquire(blocking=False):
+            response = common_pb2.OperationResponse(success=True)
+            return response
+        else:
+            response = common_pb2.OperationResponse(success=False)
+            return response
 
     async def CheckSnapshotReady(self, request, context):
         count = db.get_attr("halted_consumers_counter", "count", Counter)
         # print(f"count: {count} ; needed: {NUM_STREAM_CONSUMER_REPLICAS}")
         sys.stdout.flush()
-        
-        if (count >= NUM_STREAM_CONSUMER_REPLICAS):
+
+        if count >= NUM_STREAM_CONSUMER_REPLICAS:
             response = common_pb2.OperationResponse(success=True)
-            return response 
+            return response
         else:
             response = common_pb2.OperationResponse(success=False)
-            return response 
-        
+            return response
 
     async def Snapshot(self, request, context):
         db.snapshot()
 
         response = common_pb2.OperationResponse(success=True)
-        return response 
+        return response
 
     async def Rollback(self, request, context):
-        # rollback logic 
+        # rollback logic
 
         response = common_pb2.OperationResponse(success=True)
-        return response 
+        return response
 
     async def ContinueConsuming(self, request, context):
         flag = db.get("HALTED", Flag)
-        flag.enabled = False 
+        flag.enabled = False
         db.save(flag)
 
         counter = db.get("halted_consumers_counter", Counter)
         counter.count = 0
         db.save(counter)
 
-        response = common_pb2.OperationResponse(success=True)
-        return response 
+        lock = db.redis.lock("snapshot_lock", timeout=60)
+
+        if lock:
+            lock.release()
+            response = common_pb2.OperationResponse(success=True)
+            return response
+        else:
+            response = common_pb2.OperationResponse(success=False)
+            return response
+
 
 async def serve():
     print("Starting gRPC Stock Service")

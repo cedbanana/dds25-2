@@ -58,12 +58,13 @@ class VibeCheckerTransactionStatus(StreamProcessor):
         flag = db.get("HALTED", Flag)
         if flag is not None and flag.enabled:
             # lock = dlm.lock("consumer_lock", 3000)
-            lock = db.redis.lock('consumer_lock', timeout=10)
-            lock.acquire(blocking=True)
-            db.increment("halted_consumers_counter", "count", 666)
-            lock.release()
-            #dlm.unlock(lock)
-            
+            lock = db.redis.lock("consumer_lock", timeout=10)
+            db.increment("halted_consumers_counter", "count", 1)
+
+            lock = db.redis.lock("snapshot_lock")
+
+            if lock.acquire(blocking=True):
+                lock.release()
 
     def callback(self, id, tid=""):
         transaction = db.get(tid, Transaction)
