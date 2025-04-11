@@ -5,10 +5,9 @@ Andra Alăzăroaie:
 - testing
 
 Alexandra Căruţaşu:
-This project I:
-- created a version of the project that used RabbitMQ with the help of other team members
+- co-developed a version of the project that used RabbitMQ with other team members
 - Static driver-navigator pair programmed
-- wrote documentation
+- wrote final documentation & first report design
 - was emotional support
 - ran experiments
 
