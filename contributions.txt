@@ -25,6 +25,7 @@ Adrian Munteanu:
 - wrote documentation ( first report)
 - ran intensive tests
 - work a bit on the setup of RabbitMQ
+- Came up with "Quick Consistency" name
 
 Albert Sandu:
 - changed grpc to grpc-aio
