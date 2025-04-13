@@ -279,3 +279,9 @@ For accurate testing, run the consistency check multiple times with delays betwe
 - **Concurrent Operations:** Parallel execution of payment and stock operations
 ### ⚖️ Performance Tradeoffs
 - **Consistency vs Speed:** Quick consistency model prioritizes performance over immediate consistency
+
+## Coordinated snapshots: 
+
+Although we are able to recover in case of a database container failure, some inconsistencies might be noticed across the wider system. So, while the state of an individual service is consistent, it might not be in relation to the current state of the system. This is because snapshots might not be taken at the exact same time. To fix that, we implemented logic for synchronized snapshots. In our solution, there is a dedicated "snapshot coordinator" service running a scheduled task. This involves communicating with the microservices and making them set local flags in order to stop processing their Redis streams or order checkouts until everyone is ready to take the snapshot. The coordinator continously pings the microservices to check if they finished preparing. If they are, it signals them to take the snapshot. Afterwards, it sets their flags back, allowing them to resume execution. 
+
+The problem with this is that it involves using locks (in order to make sure that all the stream processors are halted and ready for the snapshot). In case of a failure, it might happen that a lock is still acquired and not properly restored. Due to time constraints, we couldn't fully test this behavior or implement fail-over completely safe locks. Therefore, the implementation can be found in the `syncsnapshots` branch. More specifically, `cron` is the snapshot coordinator and the implementation, on the side of the services, lies beneath additional RPC methods / REST endpoints, as well as a `pre_xread` enabling the stream processors to check if the flag is enabled and undertake the preparation procedure.
